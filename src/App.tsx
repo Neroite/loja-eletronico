@@ -6,7 +6,9 @@ import {
   Package,
   Tag,
   Database,
+  LogOut,
 } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
 
 // Custom core layouts
 import Sidebar from "./components/Sidebar";
@@ -22,6 +24,22 @@ import ProductModal from "./components/ProductModal";
 import SaleDetailsModal from "./components/SaleDetailsModal";
 import ClientModal from "./components/ClientModal";
 import StockMovementModal from "./components/StockMovementModal";
+
+// Auth & data layer
+import LoginView from "./components/LoginView";
+import { supabase } from "./lib/supabase";
+import {
+  fetchAllData,
+  upsertProduct,
+  upsertManyProducts,
+  removeProduct,
+  upsertClient,
+  removeClient,
+  insertSale,
+  cancelSale,
+  insertMovements,
+  resetAllData,
+} from "./lib/db";
 
 // Initial Data, Types & Helpers
 import {
@@ -48,8 +66,8 @@ import {
 type Tab = "dashboard" | "sales" | "inventory" | "customers" | "settings";
 
 export default function App() {
-  // Core datasets — persisted to localStorage (see usePersistentState). Swap this
-  // hook for the Supabase data layer later; the handlers below stay unchanged.
+  // Core datasets — persisted to localStorage via usePersistentState (fast initial
+  // paint), then overwritten by Supabase data after login (Supabase is source of truth).
   const [products, setProducts] = usePersistentState<Product[]>(
     "products",
     INITIAL_PRODUCTS,
@@ -64,7 +82,7 @@ export default function App() {
     [],
   );
 
-  // Store config (non-fiscal settings) — also persisted.
+  // Store config (UI only) — stays in localStorage.
   const [storeName, setStoreName] = usePersistentState(
     "storeName",
     "ByteFlow Pro",
@@ -73,6 +91,10 @@ export default function App() {
     "storeSegment",
     "Eletrônicos & Informática",
   );
+
+  // Auth & loading
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Layout states
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
@@ -97,14 +119,15 @@ export default function App() {
     undefined,
   );
 
-  // Notifications reflect a real signal: how many items need restocking.
   const replenishCount = useMemo(
     () => products.filter((p) => needsReplenish(p.stockLevel)).length,
     [products],
   );
 
-  // Toast notification helper — a single shared timer so a new toast cannot be
-  // wiped out early by a previous toast's pending timeout.
+  // ---------------------------------------------------------------------------
+  // Toast helper
+  // ---------------------------------------------------------------------------
+
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerToast = (msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -118,29 +141,78 @@ export default function App() {
     [],
   );
 
+  // ---------------------------------------------------------------------------
+  // Auth — get session on mount, subscribe to changes, fetch data on login.
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (data.session) {
+        fetchAllData()
+          .then(({ products: p, clients: c, sales: s, movements: m }) => {
+            setProducts(p);
+            setClients(c);
+            setSales(s);
+            setMovements(m);
+          })
+          .catch(console.error)
+          .finally(() => setIsLoading(false));
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      if (s) {
+        fetchAllData()
+          .then(({ products: p, clients: c, sales: s2, movements: m }) => {
+            setProducts(p);
+            setClients(c);
+            setSales(s2);
+            setMovements(m);
+          })
+          .catch(console.error);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------------------
+
   const goToTab = (tab: Tab) => {
     setActiveTab(tab);
-    setSearchQuery(""); // reset search on tab switches
-    setMobileMenuOpen(false); // close the off-canvas drawer on mobile
+    setSearchQuery("");
+    setMobileMenuOpen(false);
   };
 
-  // Append stock movements (most-recent first), assigning each a collision-free id.
+  // Stamps movement entries with IDs (collision-safe against current state) and
+  // appends them to the movements list. Returns stamped movements for DB sync.
   const recordMovements = (
     entries: Omit<StockMovement, "id" | "createdAt">[],
-  ) => {
-    if (entries.length === 0) return;
-    setMovements((prev) => {
-      const taken = prev.map((m) => m.id);
-      const stamped: StockMovement[] = entries.map((e) => {
-        const id = makeId("#MOV-", taken);
-        taken.push(id);
-        return { ...e, id, createdAt: new Date().toISOString() };
-      });
-      return [...stamped, ...prev];
+  ): StockMovement[] => {
+    if (entries.length === 0) return [];
+    const taken = movements.map((m) => m.id);
+    const stamped: StockMovement[] = entries.map((e) => {
+      const id = makeId("#MOV-", taken);
+      taken.push(id);
+      return { ...e, id, createdAt: new Date().toISOString() };
     });
+    setMovements((prev) => [...stamped, ...prev]);
+    return stamped;
   };
 
+  const syncErr = () =>
+    triggerToast("Aviso: erro ao sincronizar com o banco de dados.");
+
+  // ---------------------------------------------------------------------------
   // 1. Transaction creation (Nova Venda)
+  // ---------------------------------------------------------------------------
+
   const handleRegisterSale = (saleData: {
     clientId?: string;
     clientName: string;
@@ -150,9 +222,9 @@ export default function App() {
     status: SaleStatus;
     items: SaleItem[];
   }) => {
-    // Record a 'venda' movement per sold item (computed from the current products snapshot).
     const productById = new Map(products.map((p) => [p.id, p]));
-    recordMovements(
+
+    const stamped = recordMovements(
       saleData.items
         .filter((item) => productById.has(item.productId))
         .map((item) => {
@@ -167,7 +239,6 @@ export default function App() {
         }),
     );
 
-    // Deduct stock levels for selected items and re-derive their status
     setProducts((prev) =>
       prev.map((prod) => {
         const soldItem = saleData.items.find(
@@ -175,15 +246,10 @@ export default function App() {
         );
         if (!soldItem) return prod;
         const nextStock = Math.max(0, prod.stockLevel - soldItem.quantity);
-        return {
-          ...prod,
-          stockLevel: nextStock,
-          status: deriveStatus(nextStock),
-        };
+        return { ...prod, stockLevel: nextStock, status: deriveStatus(nextStock) };
       }),
     );
 
-    // Append to transactions list with a real timestamp and a collision-free id
     const newSaleRecord: Sale = {
       id: makeId(
         "#BF-",
@@ -208,27 +274,43 @@ export default function App() {
     triggerToast(
       `Sucesso! Venda ${newSaleRecord.id} registrada e estoque atualizado.`,
     );
+
+    if (session) {
+      const changedProducts = saleData.items
+        .map((item) => {
+          const prod = productById.get(item.productId);
+          if (!prod) return null;
+          const nextStock = Math.max(0, prod.stockLevel - item.quantity);
+          return { ...prod, stockLevel: nextStock, status: deriveStatus(nextStock) };
+        })
+        .filter((p): p is Product => p !== null);
+      Promise.all([
+        insertSale(newSaleRecord),
+        upsertManyProducts(changedProducts),
+        stamped.length > 0 ? insertMovements(stamped) : Promise.resolve(),
+      ]).catch(syncErr);
+    }
   };
 
+  // ---------------------------------------------------------------------------
   // 2. Refund / cancel a sale (estorno)
+  // ---------------------------------------------------------------------------
+
   const handleRefundSale = (saleId: string) => {
     const targetSale = sales.find((s) => s.id === saleId);
     if (!targetSale) return;
 
-    // Guard against refunding the same sale twice (would double-restock).
     if (targetSale.status === "Cancelado") {
       triggerToast(`Venda ${saleId} já está cancelada.`);
       return;
     }
 
-    // Items whose product was deleted from the catalog can't be restocked.
     const productById = new Map(products.map((p) => [p.id, p]));
     const orphanCount = targetSale.items.filter(
       (item) => !productById.has(item.productId),
     ).length;
 
-    // Record an 'estorno' movement per restocked item (capped at maxStock, mirroring below).
-    recordMovements(
+    const stamped = recordMovements(
       targetSale.items
         .filter((item) => productById.has(item.productId))
         .map((item) => {
@@ -247,7 +329,6 @@ export default function App() {
         }),
     );
 
-    // Refund units back to corresponding products, capped at each box's capacity.
     setProducts((prev) =>
       prev.map((prod) => {
         const refundedItem = targetSale.items.find(
@@ -258,11 +339,7 @@ export default function App() {
           prod.maxStock,
           prod.stockLevel + refundedItem.quantity,
         );
-        return {
-          ...prod,
-          stockLevel: nextStock,
-          status: deriveStatus(nextStock),
-        };
+        return { ...prod, stockLevel: nextStock, status: deriveStatus(nextStock) };
       }),
     );
 
@@ -274,10 +351,28 @@ export default function App() {
         ? `Venda ${saleId} cancelada. ${orphanCount} item(ns) não repostos: produto removido do catálogo.`
         : `Venda ${saleId} cancelada. Produtos repostos no estoque.`,
     );
+
+    if (session) {
+      const changedProducts = targetSale.items
+        .map((item) => {
+          const prod = productById.get(item.productId);
+          if (!prod) return null;
+          const nextStock = Math.min(prod.maxStock, prod.stockLevel + item.quantity);
+          return { ...prod, stockLevel: nextStock, status: deriveStatus(nextStock) };
+        })
+        .filter((p): p is Product => p !== null);
+      Promise.all([
+        cancelSale(saleId),
+        upsertManyProducts(changedProducts),
+        stamped.length > 0 ? insertMovements(stamped) : Promise.resolve(),
+      ]).catch(syncErr);
+    }
   };
 
-  // 3. Product save/edit — isEdit is authoritative (the modal knows whether it opened
-  // in edit mode), so a brand-new product can never silently overwrite an existing one.
+  // ---------------------------------------------------------------------------
+  // 3. Product save/edit
+  // ---------------------------------------------------------------------------
+
   const handleSaveProduct = (productData: Product, isEdit: boolean) => {
     setProducts((prev) =>
       isEdit
@@ -291,22 +386,37 @@ export default function App() {
     );
     setShowProductModal(false);
     setProductToEdit(undefined);
+
+    if (session) {
+      upsertProduct(productData).catch(syncErr);
+    }
   };
 
+  // ---------------------------------------------------------------------------
   // 4. Delete product
+  // ---------------------------------------------------------------------------
+
   const handleDeleteProduct = (productId: string) => {
     setProducts((prev) => prev.filter((p) => p.id !== productId));
     triggerToast("Produto removido do catálogo de estoque.");
+
+    if (session) {
+      removeProduct(productId).catch(syncErr);
+    }
   };
 
-  // 5. Bulk replenishment — restore each low item to its own box capacity (maxStock)
+  // ---------------------------------------------------------------------------
+  // 5. Bulk replenishment
+  // ---------------------------------------------------------------------------
+
   const handleBulkReplenish = () => {
     const lowStockItems = products.filter((p) => needsReplenish(p.stockLevel));
     if (lowStockItems.length === 0) {
       triggerToast("Nenhum item abaixo do nível mínimo no momento.");
       return;
     }
-    recordMovements(
+
+    const stamped = recordMovements(
       lowStockItems.map((prod) => ({
         productId: prod.id,
         productName: prod.name,
@@ -315,31 +425,54 @@ export default function App() {
         resultingStock: prod.maxStock,
       })),
     );
+
     setProducts((prev) =>
       prev.map((prod) =>
         needsReplenish(prod.stockLevel)
-          ? {
-              ...prod,
-              stockLevel: prod.maxStock,
-              status: deriveStatus(prod.maxStock),
-            }
+          ? { ...prod, stockLevel: prod.maxStock, status: deriveStatus(prod.maxStock) }
           : prod,
       ),
     );
     triggerToast(
       `Ordem de Compra emitida! ${lowStockItems.length} produtos repostos à capacidade máxima.`,
     );
+
+    if (session) {
+      const replenished = lowStockItems.map((prod) => ({
+        ...prod,
+        stockLevel: prod.maxStock,
+        status: deriveStatus(prod.maxStock),
+      }));
+      Promise.all([
+        upsertManyProducts(replenished),
+        stamped.length > 0 ? insertMovements(stamped) : Promise.resolve(),
+      ]).catch(syncErr);
+    }
   };
 
-  // 6. Recalculate stock statuses (e.g. after rule changes)
+  // ---------------------------------------------------------------------------
+  // 6. Recalculate stock statuses
+  // ---------------------------------------------------------------------------
+
   const handleRecalcStock = () => {
     setProducts((prev) =>
       prev.map((p) => ({ ...p, status: deriveStatus(p.stockLevel) })),
     );
     triggerToast("Status do estoque recalculado conforme os níveis atuais.");
+
+    if (session) {
+      const recalced = products.map((p) => ({
+        ...p,
+        status: deriveStatus(p.stockLevel),
+      }));
+      upsertManyProducts(recalced).catch(syncErr);
+    }
   };
 
-  // 6b. Manual stock adjustment (entrada/perda) — clamped to [0, maxStock], logged as a movement.
+  // ---------------------------------------------------------------------------
+  // 6b. Manual stock adjustment
+  // ---------------------------------------------------------------------------
+
   const handleAdjustStock = (
     productId: string,
     delta: number,
@@ -358,7 +491,8 @@ export default function App() {
       );
       return;
     }
-    recordMovements([
+
+    const stamped = recordMovements([
       {
         productId: target.id,
         productName: target.name,
@@ -368,6 +502,7 @@ export default function App() {
         reason: reason.trim() || undefined,
       },
     ]);
+
     setProducts((prev) =>
       prev.map((p) =>
         p.id === productId
@@ -383,9 +518,24 @@ export default function App() {
     triggerToast(
       `Estoque de ${target.name} ajustado em ${realDelta > 0 ? "+" : ""}${realDelta} (agora ${nextStock}).`,
     );
+
+    if (session) {
+      const updated = {
+        ...target,
+        stockLevel: nextStock,
+        status: deriveStatus(nextStock),
+      };
+      Promise.all([
+        upsertProduct(updated),
+        stamped.length > 0 ? insertMovements(stamped) : Promise.resolve(),
+      ]).catch(syncErr);
+    }
   };
 
-  // 7. Client save/edit — isEdit authoritative (see handleSaveProduct).
+  // ---------------------------------------------------------------------------
+  // 7. Client save/edit
+  // ---------------------------------------------------------------------------
+
   const handleSaveClient = (clientData: Client, isEdit: boolean) => {
     setClients((prev) =>
       isEdit
@@ -399,19 +549,33 @@ export default function App() {
     );
     setShowClientModal(false);
     setClientToEdit(undefined);
+
+    if (session) {
+      upsertClient(clientData).catch(syncErr);
+    }
   };
 
+  // ---------------------------------------------------------------------------
   // 8. Delete client
+  // ---------------------------------------------------------------------------
+
   const handleDeleteClient = (clientId: string) => {
     setClients((prev) => prev.filter((c) => c.id !== clientId));
     triggerToast("Cliente removido da carteira.");
+
+    if (session) {
+      removeClient(clientId).catch(syncErr);
+    }
   };
 
-  // 9. Reset persisted data back to the seed demo datasets.
+  // ---------------------------------------------------------------------------
+  // 9. Reset data back to demo seed
+  // ---------------------------------------------------------------------------
+
   const handleResetData = () => {
     if (
       !window.confirm(
-        "Restaurar os dados de demonstração? Todas as alterações locais (vendas, produtos e clientes) serão perdidas.",
+        "Restaurar os dados de demonstração? Todas as alterações (locais e no banco de dados) serão perdidas.",
       )
     ) {
       return;
@@ -424,6 +588,12 @@ export default function App() {
     setStoreName("ByteFlow Pro");
     setStoreSegment("Eletrônicos & Informática");
     triggerToast("Dados de demonstração restaurados.");
+
+    if (session) {
+      resetAllData().catch(() =>
+        triggerToast("Aviso: erro ao resetar o banco de dados."),
+      );
+    }
   };
 
   const openNewProduct = () => {
@@ -439,11 +609,11 @@ export default function App() {
   const getHeaderTitle = () => {
     switch (activeTab) {
       case "dashboard":
-        return "Store ";
-      case "sales":
         return "Gestão da loja";
+      case "sales":
+        return "Histórico de Vendas";
       case "inventory":
-        return "Gestão do Estoque";
+        return "Gestão de Estoque";
       case "customers":
         return "Carteira de Clientes";
       case "settings":
@@ -452,6 +622,26 @@ export default function App() {
         return storeName;
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Auth gates — loading spinner and login screen before main app.
+  // ---------------------------------------------------------------------------
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#f9f9ff] flex items-center justify-center">
+        <div className="w-7 h-7 border-2 border-brand/20 border-t-brand rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginView />;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Main app
+  // ---------------------------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-[#f9f9ff] text-slate-800 font-sans selection:bg-brand/20">
@@ -633,18 +823,42 @@ export default function App() {
                 <div>
                   <h4 className="text-xs font-black text-slate-800 uppercase flex items-center gap-2 mb-3">
                     <Database className="w-4 h-4 text-brand" />
-                    <span>Dados Locais</span>
+                    <span>Dados</span>
                   </h4>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
                     <p className="text-[11px] text-slate-500 max-w-sm">
-                      Vendas, produtos e clientes ficam salvos no navegador.
-                      Restaure os dados de demonstração para começar do zero.
+                      Restaura produtos, vendas e clientes para os dados de
+                      demonstração, tanto localmente quanto no banco de dados.
                     </p>
                     <button
                       onClick={handleResetData}
                       className="shrink-0 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 text-red-600 font-bold text-xs px-4 py-2 rounded-lg transition-colors"
                     >
                       Restaurar dados de demonstração
+                    </button>
+                  </div>
+                </div>
+
+                <hr className="border-slate-100" />
+
+                {/* Account */}
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 uppercase flex items-center gap-2 mb-3">
+                    <LogOut className="w-4 h-4 text-brand" />
+                    <span>Conta</span>
+                  </h4>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                    <p className="text-[11px] text-slate-500">
+                      Conectado como{" "}
+                      <span className="font-semibold text-slate-700">
+                        {session.user.email}
+                      </span>
+                    </p>
+                    <button
+                      onClick={() => supabase.auth.signOut()}
+                      className="shrink-0 bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 text-red-600 font-bold text-xs px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Sair da conta
                     </button>
                   </div>
                 </div>

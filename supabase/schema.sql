@@ -62,3 +62,24 @@ alter table public.sales    enable row level security;
 create policy "dev_all_clients"  on public.clients  for all to authenticated using (true) with check (true);
 create policy "dev_all_products" on public.products for all to authenticated using (true) with check (true);
 create policy "dev_all_sales"    on public.sales    for all to authenticated using (true) with check (true);
+
+-- ---------------------------------------------------------------------------
+-- Stock movements (histórico de movimentação de estoque)
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.stock_movements (
+  id              text primary key,
+  product_id      text not null references public.products (id) on delete cascade,
+  product_name    text not null,
+  type            text not null,        -- 'venda' | 'estorno' | 'reposição' | 'ajuste' | 'cadastro'
+  delta           integer not null,     -- + entrada / - saída
+  resulting_stock integer not null,     -- stock level after this movement
+  reason          text,                 -- free-text for manual adjustments
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists movements_product_id_idx on public.stock_movements (product_id);
+create index if not exists movements_created_at_idx  on public.stock_movements (created_at desc);
+
+alter table public.stock_movements enable row level security;
+create policy "dev_all_movements" on public.stock_movements for all to authenticated using (true) with check (true);

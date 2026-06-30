@@ -104,6 +104,37 @@ export interface Database {
           }
         ];
       };
+      stock_movements: {
+        Row: {
+          id: string;
+          product_id: string;
+          product_name: string;
+          type: string;
+          delta: number;
+          resulting_stock: number;
+          reason: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          product_id: string;
+          product_name: string;
+          type: string;
+          delta: number;
+          resulting_stock: number;
+          reason?: string | null;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['stock_movements']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: 'stock_movements_product_id_fkey';
+            columns: ['product_id'];
+            referencedRelation: 'products';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

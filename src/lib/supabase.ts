@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './database.types';
-import type { Product, Client, Sale } from '../types';
+import type { Product, Client, Sale, StockMovement } from '../types';
 
 // Supabase client — configured from .env (see .env.example).
 // NOTE: nothing imports this yet; the app still runs entirely on localStorage via
@@ -100,10 +100,26 @@ export const toSaleRow = (s: Sale): SaleRow => ({
   items: s.items
 });
 
-// Example fetch (uncomment + adapt when wiring the UI to Supabase):
-//
-// export async function fetchProducts(): Promise<Product[]> {
-//   const { data, error } = await supabase.from('products').select('*');
-//   if (error) throw error;
-//   return data.map(fromProductRow);
-// }
+type MovementRow = Database['public']['Tables']['stock_movements']['Row'];
+
+export const fromMovementRow = (r: MovementRow): StockMovement => ({
+  id: r.id,
+  productId: r.product_id,
+  productName: r.product_name,
+  type: r.type as StockMovement['type'],
+  delta: r.delta,
+  resultingStock: r.resulting_stock,
+  reason: r.reason ?? undefined,
+  createdAt: r.created_at,
+});
+
+export const toMovementRow = (m: StockMovement): MovementRow => ({
+  id: m.id,
+  product_id: m.productId,
+  product_name: m.productName,
+  type: m.type,
+  delta: m.delta,
+  resulting_stock: m.resultingStock,
+  reason: m.reason ?? null,
+  created_at: m.createdAt,
+});
