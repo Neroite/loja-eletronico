@@ -1,5 +1,7 @@
-import { Search, Bell, UserRound, Menu } from 'lucide-react';
-import { AVATAR_URL } from '../initialData';
+"use client";
+
+import { Search, Bell, UserRound, Menu } from "lucide-react";
+import { AVATAR_URL } from "../initialData";
 
 interface HeaderProps {
   searchQuery: string;
@@ -18,13 +20,10 @@ export default function Header({
   showSearch,
   notificationsCount,
   onBellClick,
-  onMenuClick
+  onMenuClick,
 }: HeaderProps) {
   return (
-    <header
-      id="top-app-bar"
-      className="h-16 fixed top-0 right-0 left-0 lg:left-64 z-10 bg-brand-dark border-b border-brand-dark/30 shadow-sm flex items-center justify-between px-4 sm:px-6 lg:px-8"
-    >
+    <header className="h-16 fixed top-0 right-0 left-0 lg:left-64 z-10 bg-brand-dark border-b border-brand-dark/30 shadow-sm flex items-center justify-between px-4 sm:px-6 lg:px-8">
       <div className="flex items-center gap-3 sm:gap-6">
         <button
           onClick={onMenuClick}
@@ -33,7 +32,9 @@ export default function Header({
         >
           <Menu className="w-5 h-5" />
         </button>
-        <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">{title}</h2>
+        <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight truncate">
+          {title}
+        </h2>
       </div>
 
       <div className="flex items-center gap-6">
@@ -52,7 +53,7 @@ export default function Header({
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-xs font-bold"
               >
                 ×
@@ -76,12 +77,21 @@ export default function Header({
 
         <div className="flex items-center gap-3 pl-4 border-l border-white/20">
           <div className="text-right hidden xl:block">
-            <p className="text-xs font-bold text-white leading-none">Marcos Silva</p>
-            <p className="text-[9px] font-bold text-white/60 uppercase tracking-wide mt-0.5">Gerente de Vendas</p>
+            <p className="text-xs font-bold text-white leading-none">
+              Marcos Silva
+            </p>
+            <p className="text-[9px] font-bold text-white/60 uppercase tracking-wide mt-0.5">
+              Gerente de Vendas
+            </p>
           </div>
           <div className="w-9 h-9 rounded-full overflow-hidden border-2 border-white/50 shadow-sm bg-white/10 flex items-center justify-center">
             {AVATAR_URL ? (
-              <img src={AVATAR_URL} className="w-full h-full object-cover" alt="Marcos Silva" referrerPolicy="no-referrer" />
+              <img
+                src={AVATAR_URL}
+                className="w-full h-full object-cover"
+                alt="Marcos Silva"
+                referrerPolicy="no-referrer"
+              />
             ) : (
               <UserRound className="w-4 h-4 text-white" />
             )}

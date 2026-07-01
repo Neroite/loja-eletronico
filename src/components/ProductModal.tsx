@@ -1,35 +1,47 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { X, Clipboard, DollarSign, Image as ImageIcon, AlertTriangle } from 'lucide-react';
-import { Product } from '../types';
-import { PRODUCT_IMAGE_SAMPLES } from '../initialData';
-import { deriveStatus } from '../lib/stock';
-import { makeId } from '../lib/id';
+"use client";
+
+import { useState, useEffect, useTransition, type FormEvent } from "react";
+import { X, Clipboard, DollarSign, Image as ImageIcon, AlertTriangle, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
+import { saveProduct } from "@/app/(auth)/inventory/_actions/save-product";
+import type { Product } from "@/types";
+import { PRODUCT_IMAGE_SAMPLES } from "@/initialData";
+import { deriveStatus } from "@/lib/stock";
+import { makeId } from "@/lib/id";
 
 interface ProductModalProps {
-  productToEdit?: Product; // If provided, we are editing. Otherwise, creating a new product.
-  existingIds: string[]; // SKUs already in use — for collision-free new SKUs + duplicate guard.
+  product?: Product;
   onClose: () => void;
-  onSaveProduct: (productData: Product, isEdit: boolean) => void;
+  onSuccess: () => void;
 }
 
-export default function ProductModal({
-  productToEdit,
-  existingIds,
-  onClose,
-  onSaveProduct
-}: ProductModalProps) {
+export default function ProductModal({ product: productToEdit, onClose, onSuccess }: ProductModalProps) {
   const isEdit = !!productToEdit;
-  const [sku, setSku] = useState('');
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('Hardware');
+  const [existingIds, setExistingIds] = useState<string[]>([]);
+  const [isPending, startTransition] = useTransition();
+
+  const [sku, setSku] = useState("");
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("Hardware");
   const [stockLevel, setStockLevel] = useState(1);
   const [maxStock, setMaxStock] = useState(50);
   const [costPrice, setCostPrice] = useState(10.0);
   const [salePrice, setSalePrice] = useState(20.5);
   const [imageUrl, setImageUrl] = useState(PRODUCT_IMAGE_SAMPLES[0].url);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
-  // Load product to edit if editing
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.from("products").select("id").then(({ data }) => {
+      const ids = (data ?? []).map((r) => r.id);
+      setExistingIds(ids);
+      if (!productToEdit) {
+        setSku(makeId("#TECH-", ids, 4));
+      }
+    });
+  }, [productToEdit]);
+
   useEffect(() => {
     if (productToEdit) {
       setSku(productToEdit.id);
@@ -40,19 +52,13 @@ export default function ProductModal({
       setCostPrice(productToEdit.costPrice);
       setSalePrice(productToEdit.salePrice);
       setImageUrl(productToEdit.imageUrl);
-    } else {
-      // Suggest a collision-free SKU for the new product.
-      setSku(makeId('#TECH-', existingIds, 4));
     }
-    // existingIds intentionally omitted: only re-seed when the edited product changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productToEdit]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-
     if (!sku.trim() || !name.trim()) {
-      setError('Preencha o SKU e o nome do produto.');
+      setError("Preencha o SKU e o nome do produto.");
       return;
     }
     if (!isEdit && existingIds.includes(sku.trim())) {
@@ -60,70 +66,66 @@ export default function ProductModal({
       return;
     }
     if (stockLevel > maxStock) {
-      setError('O estoque inicial não pode ser maior que a capacidade do box.');
+      setError("O estoque inicial não pode ser maior que a capacidade do box.");
       return;
     }
     if (salePrice < costPrice) {
-      setError('O preço de venda não pode ser menor que o preço de custo.');
+      setError("O preço de venda não pode ser menor que o preço de custo.");
       return;
     }
 
-    onSaveProduct(
-      {
-        id: sku.trim(),
-        name,
-        category,
-        stockLevel,
-        maxStock,
-        status: deriveStatus(stockLevel),
-        costPrice,
-        salePrice,
-        imageUrl
-      },
-      isEdit
-    );
+    const productData: Product = {
+      id: sku.trim(),
+      name,
+      category,
+      stockLevel,
+      maxStock,
+      status: deriveStatus(stockLevel),
+      costPrice,
+      salePrice,
+      imageUrl,
+    };
+
+    startTransition(async () => {
+      try {
+        await saveProduct(productData, isEdit);
+        toast.success(isEdit ? "Produto atualizado com sucesso." : "Produto cadastrado com sucesso.");
+        onSuccess();
+      } catch {
+        toast.error("Erro ao salvar o produto. Tente novamente.");
+      }
+    });
   };
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-2xl border border-slate-200 max-w-lg w-full shadow-2xl overflow-hidden">
-        
-        {/* Title Bar */}
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <div className="flex items-center gap-2">
             <Clipboard className="w-5 h-5 text-brand" />
             <h2 className="text-sm font-extrabold text-brand-dark uppercase">
-              {productToEdit ? 'Editar Produto do Inventário' : 'Cadastrar Novo Produto'}
+              {isEdit ? "Editar Produto do Inventário" : "Cadastrar Novo Produto"}
             </h2>
           </div>
-          <button 
-            type="button" 
-            onClick={onClose} 
-            className="text-slate-400 hover:text-slate-600 transition-colors"
-          >
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          
           <div className="grid grid-cols-3 gap-3">
-            {/* SKU Input */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">SKU / Código</label>
               <input
                 type="text"
                 value={sku}
                 onChange={(e) => setSku(e.target.value)}
-                disabled={!!productToEdit}
+                disabled={isEdit}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-brand disabled:opacity-60"
                 placeholder="Ex. #45001-X"
                 required
               />
             </div>
-
-            {/* Product Name */}
             <div className="col-span-2">
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nome do Produto</label>
               <input
@@ -138,7 +140,6 @@ export default function ProductModal({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Category selection */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoria / Setor</label>
               <select
@@ -153,8 +154,6 @@ export default function ProductModal({
                 <option value="Acessórios">Acessórios / Outros</option>
               </select>
             </div>
-
-            {/* Image Preset selection Selector */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
                 <ImageIcon className="w-3.5 h-3.5 text-slate-400" />
@@ -175,7 +174,6 @@ export default function ProductModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Stock Levels */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Estoque Inicial (Unids)</label>
               <input
@@ -187,7 +185,6 @@ export default function ProductModal({
                 required
               />
             </div>
-
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Capacidade de Box (Máximo)</label>
               <input
@@ -202,7 +199,6 @@ export default function ProductModal({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Pricing Details */}
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
                 <DollarSign className="w-3.5 h-3.5 text-slate-400" />
@@ -218,7 +214,6 @@ export default function ProductModal({
                 required
               />
             </div>
-
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
                 <DollarSign className="w-3.5 h-3.5 text-brand" />
@@ -236,24 +231,17 @@ export default function ProductModal({
             </div>
           </div>
 
-          {/* Picture Preview */}
           {imageUrl && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-slate-200 overflow-hidden shrink-0">
-                <img 
-                  src={imageUrl} 
-                  className="w-full h-full object-cover" 
-                  alt="Previa do produto" 
-                  referrerPolicy="no-referrer"
-                />
+                <img src={imageUrl} className="w-full h-full object-cover" alt="Prévia do produto" referrerPolicy="no-referrer" />
               </div>
               <p className="text-[10px] text-slate-400 font-semibold leading-normal">
-                Previsualização da foto selecionada. Ela será impressa no catálogo do caixa e na tela do inventário.
+                Previsualização da foto selecionada.
               </p>
             </div>
           )}
 
-          {/* Validation error */}
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 text-[11px] font-semibold px-3 py-2 rounded-lg">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -261,7 +249,6 @@ export default function ProductModal({
             </div>
           )}
 
-          {/* Action Row */}
           <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
             <button
               type="button"
@@ -272,14 +259,14 @@ export default function ProductModal({
             </button>
             <button
               type="submit"
-              className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white font-bold text-xs px-5 py-2 rounded-xl shadow-md shadow-brand/20 active:scale-95 transition-all"
+              disabled={isPending}
+              className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-xl shadow-md shadow-brand/20 active:scale-95 transition-all flex items-center gap-2"
             >
+              {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Confirmar e Salvar
             </button>
           </div>
-
         </form>
-
       </div>
     </div>
   );

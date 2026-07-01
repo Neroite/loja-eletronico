@@ -1,30 +1,33 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { X, UserRound, FileText, Mail, Phone, Building2 } from 'lucide-react';
-import { Client } from '../types';
-import { makeId } from '../lib/id';
+"use client";
+
+import { useState, useEffect, useTransition, type FormEvent } from "react";
+import { X, UserRound, FileText, Mail, Phone, Building2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { saveClient } from "@/app/(auth)/customers/_actions/save-client";
+import type { Client } from "@/types";
 
 interface ClientModalProps {
-  clientToEdit?: Client;
-  existingIds: string[]; // IDs already in use — for collision-free new client IDs.
+  client?: Client;
   onClose: () => void;
-  onSaveClient: (client: Client, isEdit: boolean) => void;
+  onSuccess: () => void;
 }
 
-export default function ClientModal({ clientToEdit, existingIds, onClose, onSaveClient }: ClientModalProps) {
+export default function ClientModal({ client: clientToEdit, onClose, onSuccess }: ClientModalProps) {
   const isEdit = !!clientToEdit;
-  const [name, setName] = useState('');
-  const [contactName, setContactName] = useState('');
-  const [doc, setDoc] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [isPending, startTransition] = useTransition();
+  const [name, setName] = useState("");
+  const [contactName, setContactName] = useState("");
+  const [doc, setDoc] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
 
   useEffect(() => {
     if (clientToEdit) {
       setName(clientToEdit.name);
-      setContactName(clientToEdit.contactName || '');
-      setDoc(clientToEdit.doc || '');
-      setEmail(clientToEdit.email || '');
-      setPhone(clientToEdit.phone || '');
+      setContactName(clientToEdit.contactName || "");
+      setDoc(clientToEdit.doc || "");
+      setEmail(clientToEdit.email || "");
+      setPhone(clientToEdit.phone || "");
     }
   }, [clientToEdit]);
 
@@ -32,18 +35,26 @@ export default function ClientModal({ clientToEdit, existingIds, onClose, onSave
     e.preventDefault();
     if (!name.trim()) return;
 
-    onSaveClient(
-      {
-        id: clientToEdit?.id ?? makeId('#CLI-', existingIds, 3),
-        name: name.trim(),
-        contactName: contactName.trim() || undefined,
-        doc: doc.trim() || undefined,
-        email: email.trim() || undefined,
-        phone: phone.trim() || undefined,
-        createdAt: clientToEdit?.createdAt ?? new Date().toISOString()
-      },
-      isEdit
-    );
+    startTransition(async () => {
+      try {
+        await saveClient(
+          {
+            id: clientToEdit?.id,
+            name: name.trim(),
+            contactName: contactName.trim() || undefined,
+            doc: doc.trim() || undefined,
+            email: email.trim() || undefined,
+            phone: phone.trim() || undefined,
+            createdAt: clientToEdit?.createdAt,
+          },
+          isEdit
+        );
+        toast.success(isEdit ? "Cliente atualizado com sucesso." : "Cliente cadastrado com sucesso.");
+        onSuccess();
+      } catch {
+        toast.error("Erro ao salvar o cliente. Tente novamente.");
+      }
+    });
   };
 
   return (
@@ -53,7 +64,7 @@ export default function ClientModal({ clientToEdit, existingIds, onClose, onSave
           <div className="flex items-center gap-2">
             <UserRound className="w-5 h-5 text-brand" />
             <h2 className="text-sm font-extrabold text-brand-dark uppercase">
-              {clientToEdit ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}
+              {isEdit ? "Editar Cliente" : "Cadastrar Novo Cliente"}
             </h2>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -145,8 +156,10 @@ export default function ClientModal({ clientToEdit, existingIds, onClose, onSave
             </button>
             <button
               type="submit"
-              className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white font-bold text-xs px-5 py-2 rounded-xl shadow-md shadow-brand/20 active:scale-95 transition-all"
+              disabled={isPending}
+              className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand disabled:opacity-50 text-white font-bold text-xs px-5 py-2 rounded-xl shadow-md shadow-brand/20 active:scale-95 transition-all flex items-center gap-2"
             >
+              {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
               Confirmar e Salvar
             </button>
           </div>

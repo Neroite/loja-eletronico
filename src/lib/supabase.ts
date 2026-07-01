@@ -1,34 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from './database.types';
-import type { Product, Client, Sale, StockMovement } from '../types';
-
-// Supabase client — configured from .env (see .env.example).
-// NOTE: nothing imports this yet; the app still runs entirely on localStorage via
-// usePersistentState. This is the scaffolding for when you connect the backend.
-
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!url || !anonKey) {
-  // Helps catch a missing/incomplete .env during development.
-  console.warn(
-    '[supabase] VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY ausentes. ' +
-      'Copie .env.example para .env e preencha os valores do seu projeto.'
-  );
-}
-
-export const supabase = createClient<Database>(url, anonKey);
-
-// ---------------------------------------------------------------------------
 // Row ↔ model mappers
 //
 // The DB uses snake_case columns; the app uses camelCase domain types. Convert at
 // this boundary so the rest of the app keeps using Product / Sale / Client unchanged.
-// ---------------------------------------------------------------------------
+//
+// The Supabase clients live in:
+//   - src/lib/supabase/client.ts (browser, Client Components)
+//   - src/lib/supabase/server.ts (server, Server Components & Server Actions)
 
-type ProductRow = Database['public']['Tables']['products']['Row'];
-type ClientRow = Database['public']['Tables']['clients']['Row'];
-type SaleRow = Database['public']['Tables']['sales']['Row'];
+import type { Database } from "./database.types";
+import type { Product, Client, Sale, StockMovement } from "../types";
+
+type ProductRow = Database["public"]["Tables"]["products"]["Row"];
+type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
+type SaleRow = Database["public"]["Tables"]["sales"]["Row"];
+type MovementRow = Database["public"]["Tables"]["stock_movements"]["Row"];
 
 export const fromProductRow = (r: ProductRow): Product => ({
   id: r.id,
@@ -36,10 +21,10 @@ export const fromProductRow = (r: ProductRow): Product => ({
   category: r.category,
   stockLevel: r.stock_level,
   maxStock: r.max_stock,
-  status: r.status as Product['status'],
+  status: r.status as Product["status"],
   costPrice: r.cost_price,
   salePrice: r.sale_price,
-  imageUrl: r.image_url
+  imageUrl: r.image_url,
 });
 
 export const toProductRow = (p: Product): ProductRow => ({
@@ -51,7 +36,7 @@ export const toProductRow = (p: Product): ProductRow => ({
   status: p.status,
   cost_price: p.costPrice,
   sale_price: p.salePrice,
-  image_url: p.imageUrl
+  image_url: p.imageUrl,
 });
 
 export const fromClientRow = (r: ClientRow): Client => ({
@@ -61,7 +46,7 @@ export const fromClientRow = (r: ClientRow): Client => ({
   doc: r.doc ?? undefined,
   email: r.email ?? undefined,
   phone: r.phone ?? undefined,
-  createdAt: r.created_at
+  createdAt: r.created_at,
 });
 
 export const toClientRow = (c: Client): ClientRow => ({
@@ -71,7 +56,7 @@ export const toClientRow = (c: Client): ClientRow => ({
   doc: c.doc ?? null,
   email: c.email ?? null,
   phone: c.phone ?? null,
-  created_at: c.createdAt
+  created_at: c.createdAt,
 });
 
 export const fromSaleRow = (r: SaleRow): Sale => ({
@@ -81,10 +66,10 @@ export const fromSaleRow = (r: SaleRow): Sale => ({
   clientName: r.client_name,
   clientDoc: r.client_doc,
   seller: r.seller,
-  paymentMethod: r.payment_method as Sale['paymentMethod'],
+  paymentMethod: r.payment_method as Sale["paymentMethod"],
   totalValue: r.total_value,
-  status: r.status as Sale['status'],
-  items: r.items
+  status: r.status as Sale["status"],
+  items: r.items,
 });
 
 export const toSaleRow = (s: Sale): SaleRow => ({
@@ -97,16 +82,14 @@ export const toSaleRow = (s: Sale): SaleRow => ({
   payment_method: s.paymentMethod,
   total_value: s.totalValue,
   status: s.status,
-  items: s.items
+  items: s.items,
 });
-
-type MovementRow = Database['public']['Tables']['stock_movements']['Row'];
 
 export const fromMovementRow = (r: MovementRow): StockMovement => ({
   id: r.id,
   productId: r.product_id,
   productName: r.product_name,
-  type: r.type as StockMovement['type'],
+  type: r.type as StockMovement["type"],
   delta: r.delta,
   resultingStock: r.resulting_stock,
   reason: r.reason ?? undefined,
