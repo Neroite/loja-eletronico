@@ -1,14 +1,21 @@
 "use client";
 
-import { useState, useMemo, useEffect, useTransition, type FormEvent } from "react";
+import { useState, useMemo, useEffect, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { X, Trash2, User, UserCheck, Coins, AlertTriangle, Receipt, ClipboardCheck, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { fromProductRow, fromClientRow } from "@/lib/supabase";
 import { registerSale } from "@/app/(auth)/sales/_actions/register-sale";
-import type { Product, Client, PaymentMethod, SaleStatus, SaleItem } from "@/types";
+import { saleSchema } from "@/lib/schemas";
+import { z } from "zod";
+import type { Product, Client, SaleItem } from "@/types";
 import { formatBRL } from "@/lib/format";
 import { isLow } from "@/lib/stock";
+
+const saleFormFieldsSchema = saleSchema.omit({ items: true });
+type SaleFormFields = z.infer<typeof saleFormFieldsSchema>;
 
 interface NewSaleModalProps {
   onClose: () => void;
@@ -35,10 +42,18 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
     });
   }, []);
 
-  const [clientChoice, setClientChoice] = useState<string>(WALK_IN);
-  const [seller, setSeller] = useState("Marcos Silva");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Cartão Crédito");
-  const [status, setStatus] = useState<SaleStatus>("Pago");
+  const {
+    register,
+    handleSubmit,
+  } = useForm<z.input<typeof saleFormFieldsSchema>, unknown, SaleFormFields>({
+    resolver: zodResolver(saleFormFieldsSchema),
+    defaultValues: {
+      clientChoice: WALK_IN,
+      seller: "Marcos Silva",
+      paymentMethod: "Cartão Crédito",
+      status: "Pago",
+    },
+  });
   const [cart, setCart] = useState<{ productId: string; quantity: number }[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedQuantity, setSelectedQuantity] = useState(1);
@@ -70,13 +85,13 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
     const p = productById.get(selectedProductId);
     if (!p) return;
     if (p.stockLevel <= 0) {
-      alert("Produto esgotado no estoque! Escolha outro item.");
+      toast.error("Produto esgotado no estoque! Escolha outro item.");
       return;
     }
     const existing = cart.find((c) => c.productId === selectedProductId);
     const targetQty = (existing ? existing.quantity : 0) + selectedQuantity;
     if (targetQty > p.stockLevel) {
-      alert(`Quantidade excede o disponível de ${p.stockLevel} unidades para este produto.`);
+      toast.error(`Quantidade excede o disponível de ${p.stockLevel} unidades para este produto.`);
       return;
     }
     setCart((prev) =>
@@ -100,10 +115,9 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
     [cart, productById]
   );
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
+  const onValid = (data: SaleFormFields) => {
     if (cart.length === 0) {
-      alert("Adicione pelo menos 1 produto ao carrinho de compras.");
+      toast.error("Adicione pelo menos 1 produto ao carrinho de compras.");
       return;
     }
 
@@ -112,7 +126,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
       return { productId: item.productId, name: p.name, quantity: item.quantity, price: p.salePrice };
     });
 
-    const client = clientChoice === WALK_IN ? undefined : clients.find((c) => c.id === clientChoice);
+    const client = data.clientChoice === WALK_IN ? undefined : clients.find((c) => c.id === data.clientChoice);
 
     startTransition(async () => {
       try {
@@ -120,9 +134,9 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
           clientId: client?.id,
           clientName: client?.name ?? "Consumidor Final",
           clientDoc: client?.doc ?? "N/A",
-          seller,
-          paymentMethod,
-          status,
+          seller: data.seller,
+          paymentMethod: data.paymentMethod,
+          status: data.status,
           items,
         });
         toast.success("Venda registrada com sucesso!");
@@ -150,11 +164,11 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-2xl border border-slate-200 max-w-4xl w-full shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
         {/* Left: form */}
-        <form onSubmit={handleSubmit} className="p-6 md:p-8 flex-1 overflow-y-auto custom-scrollbar">
+        <form onSubmit={handleSubmit(onValid)} className="p-6 md:p-8 flex-1 overflow-y-auto custom-scrollbar">
           <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
             <div className="flex items-center gap-2">
               <Receipt className="w-5 h-5 text-brand" />
-              <h2 className="text-lg font-extrabold text-slate-900">Registrar Venda</h2>
+              <h2 className="font-display text-lg font-semibold text-slate-900">Registrar Venda</h2>
             </div>
             <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
               <X className="w-5 h-5" />
@@ -168,8 +182,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
                 <span>Cliente</span>
               </label>
               <select
-                value={clientChoice}
-                onChange={(e) => setClientChoice(e.target.value)}
+                {...register("clientChoice")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-brand transition-all"
               >
                 <option value={WALK_IN}>Consumidor Final (sem cadastro)</option>
@@ -185,8 +198,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
                 <span>Status da Venda</span>
               </label>
               <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as SaleStatus)}
+                {...register("status")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-brand transition-all"
               >
                 <option value="Pago">Pago</option>
@@ -202,8 +214,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
                 <span>Vendedor</span>
               </label>
               <select
-                value={seller}
-                onChange={(e) => setSeller(e.target.value)}
+                {...register("seller")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-brand transition-all"
               >
                 <option value="Marcos Silva">Marcos Silva (Gerente)</option>
@@ -217,8 +228,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
                 <span>Meio de Pagamento</span>
               </label>
               <select
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                {...register("paymentMethod")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-brand transition-all"
               >
                 <option value="Cartão Crédito">Cartão Crédito</option>
@@ -319,7 +329,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
         {/* Right: basket */}
         <div className="bg-slate-50/80 md:w-80 p-6 md:p-8 border-t md:border-t-0 md:border-l border-slate-200 flex flex-col justify-between overflow-y-auto max-h-[95vh]">
           <div>
-            <h3 className="text-sm font-extrabold text-slate-800 border-b border-slate-200 pb-3 uppercase tracking-wider">
+            <h3 className="font-display text-sm font-semibold text-slate-800 border-b border-slate-200 pb-3 uppercase tracking-wider">
               Carrinho de Compras
             </h3>
             <div className="space-y-3.5 mt-4 max-h-64 overflow-y-auto pr-1">
@@ -367,7 +377,7 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
               <div className="border-t border-dashed border-slate-200 my-2" />
               <div className="flex justify-between items-end text-sm font-black text-slate-900">
                 <span>VALOR TOTAL</span>
-                <span className="text-lg text-brand font-mono leading-none">{formatBRL(subTotal)}</span>
+                <span className="text-lg text-brand font-mono tabular-nums leading-none">{formatBRL(subTotal)}</span>
               </div>
             </div>
             <div className="bg-brand-tint text-brand px-3 py-2.5 rounded-lg text-[10px] font-semibold text-center border border-brand/5">

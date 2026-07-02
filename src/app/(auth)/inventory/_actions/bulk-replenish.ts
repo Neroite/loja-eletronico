@@ -18,29 +18,32 @@ export async function bulkReplenish(): Promise<void> {
   const movIds = (existingMovements ?? []).map((m) => m.id);
   const now = new Date().toISOString();
 
-  for (const p of lowProducts) {
-    const delta = p.max_stock - p.stock_level;
-    if (delta <= 0) continue;
+  await Promise.all(
+    lowProducts.map(async (p) => {
+      const delta = p.max_stock - p.stock_level;
+      if (delta <= 0) return;
 
-    await supabase
-      .from("products")
-      .update({ stock_level: p.max_stock, status: deriveStatus(p.max_stock) })
-      .eq("id", p.id);
+      const movId = makeId("#MOV-", movIds, 5);
+      movIds.push(movId);
 
-    const movId = makeId("#MOV-", movIds, 5);
-    movIds.push(movId);
-
-    await supabase.from("stock_movements").insert({
-      id: movId,
-      product_id: p.id,
-      product_name: p.name,
-      type: "reposição",
-      delta,
-      resulting_stock: p.max_stock,
-      reason: "Reposição automática em massa",
-      created_at: now,
-    });
-  }
+      await Promise.all([
+        supabase
+          .from("products")
+          .update({ stock_level: p.max_stock, status: deriveStatus(p.max_stock) })
+          .eq("id", p.id),
+        supabase.from("stock_movements").insert({
+          id: movId,
+          product_id: p.id,
+          product_name: p.name,
+          type: "reposição",
+          delta,
+          resulting_stock: p.max_stock,
+          reason: "Reposição automática em massa",
+          created_at: now,
+        }),
+      ]);
+    })
+  );
 
   revalidatePath("/inventory");
   revalidatePath("/dashboard");

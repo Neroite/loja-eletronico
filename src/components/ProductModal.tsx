@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, useEffect, useTransition, type FormEvent } from "react";
+import { useState, useEffect, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { z } from "zod";
+import RemoteImage from "./RemoteImage";
 import { X, Clipboard, DollarSign, Image as ImageIcon, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { saveProduct } from "@/app/(auth)/inventory/_actions/save-product";
+import { productSchema, type ProductFormValues } from "@/lib/schemas";
 import type { Product } from "@/types";
 import { PRODUCT_IMAGE_SAMPLES } from "@/initialData";
 import { deriveStatus } from "@/lib/stock";
@@ -20,16 +25,39 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
   const isEdit = !!productToEdit;
   const [existingIds, setExistingIds] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
+  const [formError, setFormError] = useState("");
 
-  const [sku, setSku] = useState("");
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("Hardware");
-  const [stockLevel, setStockLevel] = useState(1);
-  const [maxStock, setMaxStock] = useState(50);
-  const [costPrice, setCostPrice] = useState(10.0);
-  const [salePrice, setSalePrice] = useState(20.5);
-  const [imageUrl, setImageUrl] = useState(PRODUCT_IMAGE_SAMPLES[0].url);
-  const [error, setError] = useState("");
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<z.input<typeof productSchema>, unknown, ProductFormValues>({
+    resolver: zodResolver(productSchema),
+    defaultValues: productToEdit
+      ? {
+          id: productToEdit.id,
+          name: productToEdit.name,
+          category: productToEdit.category,
+          stockLevel: productToEdit.stockLevel,
+          maxStock: productToEdit.maxStock,
+          costPrice: productToEdit.costPrice,
+          salePrice: productToEdit.salePrice,
+          imageUrl: productToEdit.imageUrl,
+        }
+      : {
+          id: "",
+          name: "",
+          category: "Hardware",
+          stockLevel: 1,
+          maxStock: 50,
+          costPrice: 10.0,
+          salePrice: 20.5,
+          imageUrl: PRODUCT_IMAGE_SAMPLES[0].url,
+        },
+  });
+  const imageUrl = watch("imageUrl");
 
   useEffect(() => {
     const supabase = createClient();
@@ -37,53 +65,29 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
       const ids = (data ?? []).map((r) => r.id);
       setExistingIds(ids);
       if (!productToEdit) {
-        setSku(makeId("#TECH-", ids, 4));
+        setValue("id", makeId("#TECH-", ids, 4));
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productToEdit]);
 
-  useEffect(() => {
-    if (productToEdit) {
-      setSku(productToEdit.id);
-      setName(productToEdit.name);
-      setCategory(productToEdit.category);
-      setStockLevel(productToEdit.stockLevel);
-      setMaxStock(productToEdit.maxStock);
-      setCostPrice(productToEdit.costPrice);
-      setSalePrice(productToEdit.salePrice);
-      setImageUrl(productToEdit.imageUrl);
-    }
-  }, [productToEdit]);
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!sku.trim() || !name.trim()) {
-      setError("Preencha o SKU e o nome do produto.");
-      return;
-    }
-    if (!isEdit && existingIds.includes(sku.trim())) {
-      setError(`O SKU ${sku.trim()} já existe. Escolha outro código.`);
-      return;
-    }
-    if (stockLevel > maxStock) {
-      setError("O estoque inicial não pode ser maior que a capacidade do box.");
-      return;
-    }
-    if (salePrice < costPrice) {
-      setError("O preço de venda não pode ser menor que o preço de custo.");
+  const onValid = (data: ProductFormValues) => {
+    setFormError("");
+    if (!isEdit && existingIds.includes(data.id.trim())) {
+      setFormError(`O SKU ${data.id.trim()} já existe. Escolha outro código.`);
       return;
     }
 
     const productData: Product = {
-      id: sku.trim(),
-      name,
-      category,
-      stockLevel,
-      maxStock,
-      status: deriveStatus(stockLevel),
-      costPrice,
-      salePrice,
-      imageUrl,
+      id: data.id.trim(),
+      name: data.name,
+      category: data.category,
+      stockLevel: data.stockLevel,
+      maxStock: data.maxStock,
+      status: deriveStatus(data.stockLevel),
+      costPrice: data.costPrice,
+      salePrice: data.salePrice,
+      imageUrl: data.imageUrl,
     };
 
     startTransition(async () => {
@@ -103,7 +107,7 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <div className="flex items-center gap-2">
             <Clipboard className="w-5 h-5 text-brand" />
-            <h2 className="text-sm font-extrabold text-brand-dark uppercase">
+            <h2 className="font-display text-sm font-semibold text-brand-dark uppercase">
               {isEdit ? "Editar Produto do Inventário" : "Cadastrar Novo Produto"}
             </h2>
           </div>
@@ -112,30 +116,28 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onValid)} className="p-6 space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">SKU / Código</label>
               <input
                 type="text"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
                 disabled={isEdit}
+                {...register("id")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-brand disabled:opacity-60"
                 placeholder="Ex. #45001-X"
-                required
               />
+              {errors.id && <p className="text-[10px] text-red-600 mt-1">{errors.id.message}</p>}
             </div>
             <div className="col-span-2">
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nome do Produto</label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                {...register("name")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
                 placeholder="Ex. SSD NVMe 1TB - Kingston"
-                required
               />
+              {errors.name && <p className="text-[10px] text-red-600 mt-1">{errors.name.message}</p>}
             </div>
           </div>
 
@@ -143,8 +145,7 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Categoria / Setor</label>
               <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
+                {...register("category")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
               >
                 <option value="Armazenamento">Armazenamento</option>
@@ -160,8 +161,7 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
                 <span>Foto Demonstrativa</span>
               </label>
               <select
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
+                {...register("imageUrl")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
               >
                 {PRODUCT_IMAGE_SAMPLES.map((imgOpt) => (
@@ -179,22 +179,20 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
               <input
                 type="number"
                 min={0}
-                value={stockLevel}
-                onChange={(e) => setStockLevel(Math.max(0, parseInt(e.target.value) || 0))}
+                {...register("stockLevel")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
-                required
               />
+              {errors.stockLevel && <p className="text-[10px] text-red-600 mt-1">{errors.stockLevel.message}</p>}
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Capacidade de Box (Máximo)</label>
               <input
                 type="number"
                 min={1}
-                value={maxStock}
-                onChange={(e) => setMaxStock(Math.max(1, parseInt(e.target.value) || 1))}
+                {...register("maxStock")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
-                required
               />
+              {errors.maxStock && <p className="text-[10px] text-red-600 mt-1">{errors.maxStock.message}</p>}
             </div>
           </div>
 
@@ -208,11 +206,10 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
                 type="number"
                 step="0.01"
                 min="0"
-                value={costPrice}
-                onChange={(e) => setCostPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                {...register("costPrice")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-900 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
-                required
               />
+              {errors.costPrice && <p className="text-[10px] text-red-600 mt-1">{errors.costPrice.message}</p>}
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
@@ -223,18 +220,17 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
                 type="number"
                 step="0.01"
                 min="0"
-                value={salePrice}
-                onChange={(e) => setSalePrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                {...register("salePrice")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-brand outline-none focus:bg-white focus:ring-1 focus:ring-brand"
-                required
               />
+              {errors.salePrice && <p className="text-[10px] text-red-600 mt-1">{errors.salePrice.message}</p>}
             </div>
           </div>
 
           {imageUrl && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-slate-200 overflow-hidden shrink-0">
-                <img src={imageUrl} className="w-full h-full object-cover" alt="Prévia do produto" referrerPolicy="no-referrer" />
+                <RemoteImage src={imageUrl} width={48} height={48} className="w-full h-full object-cover" alt="Prévia do produto" />
               </div>
               <p className="text-[10px] text-slate-400 font-semibold leading-normal">
                 Previsualização da foto selecionada.
@@ -242,10 +238,10 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
             </div>
           )}
 
-          {error && (
+          {formError && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 text-[11px] font-semibold px-3 py-2 rounded-lg">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>{error}</span>
+              <span>{formError}</span>
             </div>
           )}
 

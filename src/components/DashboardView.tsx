@@ -122,11 +122,11 @@ export default function DashboardView({
   );
 
   return (
-    <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+    <div className="pt-8 pb-12 px-4 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
         <div>
-          <h2 className="text-3xl font-extrabold text-slate-950 tracking-tight">Dashboard</h2>
+          <h2 className="font-display text-3xl font-semibold text-slate-950 tracking-tight">Dashboard</h2>
           <p className="text-sm text-slate-500 mt-1">Visão geral de vendas, estoque e clientes da loja.</p>
         </div>
         <button
@@ -243,7 +243,7 @@ export default function DashboardView({
         {/* Category chart */}
         <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
           <div className="mb-6">
-            <h3 className="text-base font-bold text-slate-900">Categorias Mais Vendidas</h3>
+            <h3 className="font-display text-base font-semibold text-slate-900">Categorias Mais Vendidas</h3>
             <p className="text-xs text-slate-400 mt-0.5">Faturamento por categoria no período selecionado</p>
           </div>
 
@@ -290,7 +290,7 @@ export default function DashboardView({
         <div className="lg:col-span-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-base font-bold text-slate-900">Vendas Recentes</h3>
+              <h3 className="font-display text-base font-semibold text-slate-900">Vendas Recentes</h3>
               <span className="text-[10px] font-bold text-brand bg-brand-tint px-2 py-0.5 rounded-full">
                 {periodSales.length} no período
               </span>
@@ -395,7 +395,7 @@ function MetricCard({
       </div>
       <div>
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
-        <span className="text-xl font-extrabold text-slate-900 tracking-tight">{value}</span>
+        <span className="font-mono tabular-nums text-xl font-semibold text-slate-900 tracking-tight">{value}</span>
       </div>
     </div>
   );
@@ -419,7 +419,7 @@ function FeatureTile({
         aria-label={ariaLabel}
       />
       <div className={`absolute inset-0 bg-gradient-to-r ${gradient} flex flex-col justify-center p-6 text-white`}>
-        <h4 className="text-xl font-extrabold tracking-tight mb-2">{title}</h4>
+        <h4 className="font-display text-xl font-semibold tracking-tight mb-2">{title}</h4>
         <p className="text-xs text-white/90 max-w-sm mb-4">{text}</p>
         <span className={`px-4 py-2 rounded-xl font-bold text-xs w-fit transition-colors shadow ${ctaClass}`}>
           {cta}

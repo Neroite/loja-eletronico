@@ -14,6 +14,7 @@ type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 type ClientRow = Database["public"]["Tables"]["clients"]["Row"];
 type SaleRow = Database["public"]["Tables"]["sales"]["Row"];
 type MovementRow = Database["public"]["Tables"]["stock_movements"]["Row"];
+type StoreSettingsRow = Database["public"]["Tables"]["store_settings"]["Row"];
 
 export const fromProductRow = (r: ProductRow): Product => ({
   id: r.id,
@@ -105,4 +106,11 @@ export const toMovementRow = (m: StockMovement): MovementRow => ({
   resulting_stock: m.resultingStock,
   reason: m.reason ?? null,
   created_at: m.createdAt,
+});
+
+export const fromStoreSettingsRow = (
+  r: StoreSettingsRow
+): { storeName: string; storeSegment: string } => ({
+  storeName: r.store_name,
+  storeSegment: r.store_segment,
 });

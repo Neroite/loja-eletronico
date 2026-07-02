@@ -16,41 +16,47 @@ export async function refundSale(saleId: string): Promise<void> {
 
   if (!sale || sale.status === "Cancelado") return;
 
-  await supabase.from("sales").update({ status: "Cancelado" }).eq("id", saleId);
-
   const now = new Date().toISOString();
-  const { data: existingMovements } = await supabase.from("stock_movements").select("id");
+  const [, { data: existingMovements }] = await Promise.all([
+    supabase.from("sales").update({ status: "Cancelado" }).eq("id", saleId),
+    supabase.from("stock_movements").select("id"),
+  ]);
+
+  // Sale items are unique per productId (NewSaleModal merges quantities), so each
+  // item touches a different product row — safe to process concurrently.
   const movIds = (existingMovements ?? []).map((m) => m.id);
+  await Promise.all(
+    sale.items.map(async (item) => {
+      const { data: product } = await supabase
+        .from("products")
+        .select("stock_level, name")
+        .eq("id", item.productId)
+        .single();
 
-  for (const item of sale.items) {
-    const { data: product } = await supabase
-      .from("products")
-      .select("stock_level, name")
-      .eq("id", item.productId)
-      .single();
+      if (!product) return;
 
-    if (!product) continue;
+      const newStock = product.stock_level + item.quantity;
+      const movId = makeId("#MOV-", movIds, 5);
+      movIds.push(movId);
 
-    const newStock = product.stock_level + item.quantity;
-    await supabase
-      .from("products")
-      .update({ stock_level: newStock, status: deriveStatus(newStock) })
-      .eq("id", item.productId);
-
-    const movId = makeId("#MOV-", movIds, 5);
-    movIds.push(movId);
-
-    await supabase.from("stock_movements").insert({
-      id: movId,
-      product_id: item.productId,
-      product_name: item.name,
-      type: "estorno",
-      delta: item.quantity,
-      resulting_stock: newStock,
-      reason: `Estorno da venda ${saleId}`,
-      created_at: now,
-    });
-  }
+      await Promise.all([
+        supabase
+          .from("products")
+          .update({ stock_level: newStock, status: deriveStatus(newStock) })
+          .eq("id", item.productId),
+        supabase.from("stock_movements").insert({
+          id: movId,
+          product_id: item.productId,
+          product_name: item.name,
+          type: "estorno",
+          delta: item.quantity,
+          resulting_stock: newStock,
+          reason: `Estorno da venda ${saleId}`,
+          created_at: now,
+        }),
+      ]);
+    })
+  );
 
   revalidatePath("/sales");
   revalidatePath("/dashboard");

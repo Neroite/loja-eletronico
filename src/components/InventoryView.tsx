@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import RemoteImage from './RemoteImage';
 import {
   Plus, Download, Filter, Edit, Trash2, AlertOctagon,
   TrendingDown, Coins, Warehouse, FolderOpen, RefreshCw,
@@ -90,11 +91,11 @@ export default function InventoryView({
   };
 
   return (
-    <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+    <div className="pt-8 pb-12 px-4 sm:px-6 lg:px-8">
       {/* Header + actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Inventário Geral</h3>
+          <h3 className="font-display text-xl font-semibold text-slate-900 tracking-tight">Inventário Geral</h3>
           <p className="text-xs text-slate-500 mt-1">
             Gerencie a disponibilidade e os custos dos produtos em tempo real.
           </p>
@@ -183,7 +184,7 @@ export default function InventoryView({
           </div>
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mb-1">SKUs no Catálogo</p>
-            <h4 className="text-2xl font-black text-slate-800">{products.length}</h4>
+            <h4 className="font-mono tabular-nums text-2xl font-semibold text-slate-800">{products.length}</h4>
             <p className="text-[10px] text-slate-400 mt-1">{stats.totalUnits} unidades em estoque geral</p>
           </div>
         </div>
@@ -197,7 +198,7 @@ export default function InventoryView({
           </div>
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mb-1">Abaixo do Mínimo</p>
-            <h4 className="text-2xl font-black text-slate-800">{stats.criticalCount}</h4>
+            <h4 className="font-mono tabular-nums text-2xl font-semibold text-slate-800">{stats.criticalCount}</h4>
             <p className="text-[10px] text-slate-400 mt-1">Itens requerem reposição</p>
           </div>
         </div>
@@ -209,7 +210,7 @@ export default function InventoryView({
           </div>
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mb-1">Custo em Estoque</p>
-            <h4 className="text-2xl font-black text-slate-800">{formatBRL(stats.stockValuation)}</h4>
+            <h4 className="font-mono tabular-nums text-2xl font-semibold text-slate-800">{formatBRL(stats.stockValuation)}</h4>
             <p className="text-[10px] text-slate-400 mt-1">Soma de custo unitário × estoque</p>
           </div>
         </div>
@@ -221,7 +222,7 @@ export default function InventoryView({
           </div>
           <div>
             <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider mb-1">Departamentos Ativos</p>
-            <h4 className="text-2xl font-black text-slate-800">{categories.length - 1}</h4>
+            <h4 className="font-mono tabular-nums text-2xl font-semibold text-slate-800">{categories.length - 1}</h4>
             <p className="text-[10px] text-slate-400 mt-1">Categorias cadastradas</p>
           </div>
         </div>
@@ -231,7 +232,7 @@ export default function InventoryView({
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h4 className="text-base font-extrabold text-slate-900">Lista Geral de Produtos</h4>
+            <h4 className="font-display text-base font-semibold text-slate-900">Lista Geral de Produtos</h4>
             <p className="text-xs text-slate-400 mt-0.5">Use as ações de alteração rápida ao passar o mouse na linha</p>
           </div>
           <span className="text-xs font-semibold text-slate-400">
@@ -264,7 +265,7 @@ export default function InventoryView({
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
                           {product.imageUrl ? (
-                            <img src={product.imageUrl} className="w-full h-full object-cover" alt={product.name} referrerPolicy="no-referrer" />
+                            <RemoteImage src={product.imageUrl} width={40} height={40} className="w-full h-full object-cover" alt={product.name} />
                           ) : (
                             <Warehouse className="w-4 h-4 text-slate-300" />
                           )}
@@ -379,7 +380,7 @@ export default function InventoryView({
       <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-gradient-to-br from-brand to-brand-mid text-white p-6 rounded-2xl flex items-center justify-between gap-6 shadow-md shadow-brand/20 relative overflow-hidden group">
           <div className="z-10 flex-1">
-            <h5 className="text-lg font-extrabold mb-1 tracking-tight">Reposição Sugerida</h5>
+            <h5 className="font-display text-lg font-semibold mb-1 tracking-tight">Reposição Sugerida</h5>
             <p className="text-white/85 text-xs mb-4 max-w-sm">
               {stats.criticalCount} item(ns) estão abaixo do nível mínimo e podem ser repostos automaticamente à capacidade máxima.
             </p>

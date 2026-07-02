@@ -135,6 +135,22 @@ export interface Database {
           }
         ];
       };
+      store_settings: {
+        Row: {
+          id: string;
+          store_name: string;
+          store_segment: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          store_name?: string;
+          store_segment?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['store_settings']['Insert']>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

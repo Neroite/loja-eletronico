@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, useTransition, type FormEvent } from "react";
+import { useState, useEffect, useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import type { z } from "zod";
 import { X, Boxes, Plus, Minus, History, ArrowUp, ArrowDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { fromMovementRow } from "@/lib/supabase";
 import { adjustStock } from "@/app/(auth)/inventory/_actions/adjust-stock";
+import { adjustStockSchema, type AdjustStockFormValues } from "@/lib/schemas";
 import type { Product, StockMovement, StockMovementType } from "@/types";
 import { formatDateBR, formatTime } from "@/lib/date";
 import StockBadge from "./StockBadge";
@@ -26,11 +30,21 @@ const TYPE_LABEL: Record<StockMovementType, string> = {
 };
 
 export default function StockMovementModal({ product, movements: initialMovements, onClose, onSuccess }: StockMovementModalProps) {
-  const [mode, setMode] = useState<"entrada" | "saida">("entrada");
-  const [qty, setQty] = useState(1);
-  const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
   const [movements, setMovements] = useState<StockMovement[]>(initialMovements);
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    formState: { errors },
+  } = useForm<z.input<typeof adjustStockSchema>, unknown, AdjustStockFormValues>({
+    resolver: zodResolver(adjustStockSchema),
+    defaultValues: { mode: "entrada", qty: 1, reason: "" },
+  });
+  const mode = watch("mode");
 
   useEffect(() => {
     const supabase = createClient();
@@ -44,20 +58,15 @@ export default function StockMovementModal({ product, movements: initialMovement
       });
   }, [product.id]);
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (qty < 1) return;
-    const delta = mode === "entrada" ? qty : -qty;
-
+  const onValid = (data: AdjustStockFormValues) => {
     startTransition(async () => {
       try {
-        await adjustStock(product.id, delta, reason);
+        await adjustStock(product.id, data);
         toast.success("Ajuste de estoque registrado.");
-        setQty(1);
-        setReason("");
+        reset({ mode: "entrada", qty: 1, reason: "" });
         onSuccess();
-      } catch {
-        toast.error("Erro ao registrar o ajuste.");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao registrar o ajuste.");
       }
     });
   };
@@ -69,7 +78,7 @@ export default function StockMovementModal({ product, movements: initialMovement
           <div className="flex items-center gap-2.5 min-w-0">
             <Boxes className="w-5 h-5 text-brand shrink-0" />
             <div className="min-w-0">
-              <h2 className="text-sm font-extrabold text-brand-dark truncate">{product.name}</h2>
+              <h2 className="font-display text-sm font-semibold text-brand-dark truncate">{product.name}</h2>
               <p className="text-[10px] font-mono text-slate-400">{product.id}</p>
             </div>
           </div>
@@ -82,7 +91,7 @@ export default function StockMovementModal({ product, movements: initialMovement
           <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estoque atual</p>
-              <p className="text-2xl font-black text-slate-900 leading-tight">
+              <p className="font-mono tabular-nums text-2xl font-semibold text-slate-900 leading-tight">
                 {product.stockLevel}
                 <span className="text-xs font-bold text-slate-400"> / {product.maxStock}</span>
               </p>
@@ -90,12 +99,12 @@ export default function StockMovementModal({ product, movements: initialMovement
             <StockBadge status={product.status} />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={handleSubmit(onValid)} className="space-y-3">
             <p className="text-xs font-black text-slate-500 uppercase tracking-wider">Ajuste manual</p>
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setMode("entrada")}
+                onClick={() => setValue("mode", "entrada")}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold border transition-colors ${
                   mode === "entrada"
                     ? "bg-emerald-50 border-emerald-200 text-emerald-700"
@@ -106,7 +115,7 @@ export default function StockMovementModal({ product, movements: initialMovement
               </button>
               <button
                 type="button"
-                onClick={() => setMode("saida")}
+                onClick={() => setValue("mode", "saida")}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold border transition-colors ${
                   mode === "saida"
                     ? "bg-red-50 border-red-200 text-red-700"
@@ -123,18 +132,18 @@ export default function StockMovementModal({ product, movements: initialMovement
                 <input
                   type="number"
                   min={1}
-                  value={qty}
-                  onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  {...register("qty")}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
-                  required
                 />
+                {errors.qty && (
+                  <p className="text-[10px] text-red-600 mt-1">{errors.qty.message}</p>
+                )}
               </div>
               <div className="col-span-2">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Motivo (opcional)</label>
                 <input
                   type="text"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
+                  {...register("reason")}
                   placeholder="Ex.: recebimento, perda, inventário"
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
                 />
@@ -171,7 +180,7 @@ export default function StockMovementModal({ product, movements: initialMovement
                       {mv.reason && <p className="text-[10px] text-slate-400 truncate mt-0.5">{mv.reason}</p>}
                     </div>
                     <div className="text-right shrink-0 ml-3">
-                      <span className={`inline-flex items-center gap-0.5 font-black font-mono ${positive ? "text-emerald-600" : "text-red-600"}`}>
+                      <span className={`inline-flex items-center gap-0.5 font-semibold font-mono tabular-nums ${positive ? "text-emerald-600" : "text-red-600"}`}>
                         {positive ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                         {positive ? "+" : ""}
                         {mv.delta}

@@ -95,7 +95,7 @@ export default function SalesView({ sales, searchQuery, onViewSaleDetails, onRef
   ];
 
   return (
-    <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+    <div className="pt-8 pb-12 px-4 sm:px-6 lg:px-8">
       {/* Toolbar */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">

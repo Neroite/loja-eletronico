@@ -16,7 +16,13 @@ const TITLE_MAP: Record<string, string> = {
   "/settings": "Configurações da Loja",
 };
 
-function AppShellInner({ children }: { children: React.ReactNode }) {
+interface AppShellProps {
+  children: React.ReactNode;
+  notificationsCount: number;
+  userEmail: string | null;
+}
+
+function AppShellInner({ children, notificationsCount, userEmail }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { activeModal, close } = useGlobalModal();
@@ -34,7 +40,8 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
           setSearchQuery={setQuery}
           title={title}
           showSearch={showSearch}
-          notificationsCount={0}
+          notificationsCount={notificationsCount}
+          userEmail={userEmail}
           onMenuClick={() => setMobileMenuOpen((v) => !v)}
           onBellClick={() => router.push("/inventory")}
         />
@@ -59,10 +66,12 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ children, notificationsCount, userEmail }: AppShellProps) {
   return (
     <SearchProvider>
-      <AppShellInner>{children}</AppShellInner>
+      <AppShellInner notificationsCount={notificationsCount} userEmail={userEmail}>
+        {children}
+      </AppShellInner>
     </SearchProvider>
   );
 }

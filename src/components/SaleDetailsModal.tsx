@@ -83,8 +83,8 @@ export default function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProp
                       <p className="font-bold text-slate-800 truncate">{item.name}</p>
                       <p className="text-[9px] text-slate-400 font-mono">{item.productId}</p>
                     </div>
-                    <div className="col-span-2 text-center font-extrabold text-slate-600">{item.quantity}</div>
-                    <div className="col-span-4 text-right font-bold text-slate-800 font-mono">{formatBRL(item.price)}</div>
+                    <div className="col-span-2 text-center font-mono tabular-nums font-semibold text-slate-600">{item.quantity}</div>
+                    <div className="col-span-4 text-right font-bold text-slate-800 font-mono tabular-nums">{formatBRL(item.price)}</div>
                   </div>
                 ))}
 
@@ -95,7 +95,7 @@ export default function SaleDetailsModal({ sale, onClose }: SaleDetailsModalProp
 
               <div className="bg-slate-100 px-4 py-3.5 flex justify-between items-center border-t border-slate-200">
                 <span className="font-black text-slate-700 text-xs">VALOR TOTAL</span>
-                <span className="font-mono font-black text-brand text-base">{formatBRL(sale.totalValue)}</span>
+                <span className="font-mono tabular-nums font-black text-brand text-base">{formatBRL(sale.totalValue)}</span>
               </div>
             </div>
           </div>

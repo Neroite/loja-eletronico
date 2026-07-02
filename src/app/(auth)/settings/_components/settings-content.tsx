@@ -1,26 +1,38 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Store, Save } from "lucide-react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { useStoreConfig } from "@/hooks/use-store-config";
+import { saveStoreSettings } from "../_actions/save-store-settings";
+import type { StoreSettingsFormValues } from "@/lib/schemas";
 import { STOCK } from "@/lib/stock";
 
-export default function SettingsContent() {
+interface SettingsContentProps {
+  storeName: string;
+  storeSegment: string;
+}
+
+export default function SettingsContent({ storeName: initialStoreName, storeSegment: initialStoreSegment }: SettingsContentProps) {
   const router = useRouter();
-  const { storeName, storeSegment, setStoreName, setStoreSegment } = useStoreConfig();
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [storeName, setStoreName] = useState(initialStoreName);
+  const [storeSegment, setStoreSegment] = useState<StoreSettingsFormValues["storeSegment"]>(
+    initialStoreSegment as StoreSettingsFormValues["storeSegment"]
+  );
+  const [isPending, startTransition] = useTransition();
 
   const handleSave = (e: FormEvent) => {
     e.preventDefault();
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    }, 400);
+    startTransition(async () => {
+      try {
+        await saveStoreSettings({ storeName, storeSegment });
+        toast.success("Configurações salvas com sucesso.");
+        router.refresh();
+      } catch {
+        toast.error("Erro ao salvar as configurações. Tente novamente.");
+      }
+    });
   };
 
   const handleLogout = async () => {
@@ -31,9 +43,9 @@ export default function SettingsContent() {
   };
 
   return (
-    <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-3xl">
+    <div className="pt-8 pb-12 px-4 sm:px-6 lg:px-8 max-w-3xl">
       <div className="mb-8">
-        <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Configurações da Loja</h2>
+        <h2 className="font-display text-2xl font-semibold text-slate-900 tracking-tight">Configurações da Loja</h2>
         <p className="text-sm text-slate-500 mt-1">Personalize o sistema conforme a sua operação.</p>
       </div>
 
@@ -41,7 +53,7 @@ export default function SettingsContent() {
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
           <Store className="w-4 h-4 text-brand" />
-          <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide">Identidade da Loja</h3>
+          <h3 className="font-display text-sm font-semibold text-slate-800 uppercase tracking-wide">Identidade da Loja</h3>
         </div>
         <form onSubmit={handleSave} className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -63,7 +75,9 @@ export default function SettingsContent() {
               </label>
               <select
                 value={storeSegment}
-                onChange={(e) => setStoreSegment(e.target.value)}
+                onChange={(e) =>
+                  setStoreSegment(e.target.value as StoreSettingsFormValues["storeSegment"])
+                }
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:bg-white focus:ring-2 focus:ring-brand transition-colors"
               >
                 <option value="Informática & Eletrônicos">Informática & Eletrônicos</option>
@@ -77,11 +91,11 @@ export default function SettingsContent() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={saving}
+              disabled={isPending}
               className="flex items-center gap-2 bg-brand hover:bg-brand-dark disabled:opacity-60 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors"
             >
               <Save className="w-3.5 h-3.5" />
-              {saved ? "Salvo!" : saving ? "Salvando..." : "Salvar Alterações"}
+              {isPending ? "Salvando..." : "Salvar Alterações"}
             </button>
           </div>
         </form>
@@ -90,7 +104,7 @@ export default function SettingsContent() {
       {/* Stock parameters (read-only reference) */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wide">
+          <h3 className="font-display text-sm font-semibold text-slate-800 uppercase tracking-wide">
             Parâmetros de Estoque
           </h3>
           <p className="text-xs text-slate-400 mt-1">Limiares usados para classificar o status dos produtos.</p>
@@ -98,12 +112,12 @@ export default function SettingsContent() {
         <div className="p-6 grid grid-cols-2 gap-4">
           <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-center">
             <p className="text-[9px] font-black uppercase tracking-widest text-red-500 mb-1">Crítico</p>
-            <p className="text-2xl font-black text-red-700">≤ {STOCK.critical}</p>
+            <p className="font-mono tabular-nums text-2xl font-semibold text-red-700">≤ {STOCK.critical}</p>
             <p className="text-[10px] text-red-400 mt-0.5">unidades</p>
           </div>
           <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 text-center">
             <p className="text-[9px] font-black uppercase tracking-widest text-amber-500 mb-1">Estoque Baixo</p>
-            <p className="text-2xl font-black text-amber-700">≤ {STOCK.low}</p>
+            <p className="font-mono tabular-nums text-2xl font-semibold text-amber-700">≤ {STOCK.low}</p>
             <p className="text-[10px] text-amber-400 mt-0.5">unidades</p>
           </div>
         </div>

@@ -4,11 +4,17 @@ import { createClient } from "@/lib/supabase/server";
 import { toClientRow } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { makeId } from "@/lib/id";
+import { clientSchema } from "@/lib/schemas";
 import type { Client } from "@/types";
 
 type SaveClientInput = Omit<Client, "id" | "createdAt"> & { id?: string; createdAt?: string };
 
 export async function saveClient(data: SaveClientInput, isEdit: boolean): Promise<void> {
+  const parsed = clientSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues.map((i) => i.message).join("; "));
+  }
+
   const supabase = await createClient();
 
   let id = data.id;

@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useEffect, useTransition, type FormEvent } from "react";
+import { useTransition } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { X, UserRound, FileText, Mail, Phone, Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { saveClient } from "@/app/(auth)/customers/_actions/save-client";
+import { clientSchema, type ClientFormValues } from "@/lib/schemas";
 import type { Client } from "@/types";
 
 interface ClientModalProps {
@@ -15,36 +18,33 @@ interface ClientModalProps {
 export default function ClientModal({ client: clientToEdit, onClose, onSuccess }: ClientModalProps) {
   const isEdit = !!clientToEdit;
   const [isPending, startTransition] = useTransition();
-  const [name, setName] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [doc, setDoc] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
 
-  useEffect(() => {
-    if (clientToEdit) {
-      setName(clientToEdit.name);
-      setContactName(clientToEdit.contactName || "");
-      setDoc(clientToEdit.doc || "");
-      setEmail(clientToEdit.email || "");
-      setPhone(clientToEdit.phone || "");
-    }
-  }, [clientToEdit]);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ClientFormValues>({
+    resolver: zodResolver(clientSchema),
+    defaultValues: {
+      name: clientToEdit?.name ?? "",
+      contactName: clientToEdit?.contactName ?? "",
+      doc: clientToEdit?.doc ?? "",
+      email: clientToEdit?.email ?? "",
+      phone: clientToEdit?.phone ?? "",
+    },
+  });
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
+  const onValid = (data: ClientFormValues) => {
     startTransition(async () => {
       try {
         await saveClient(
           {
             id: clientToEdit?.id,
-            name: name.trim(),
-            contactName: contactName.trim() || undefined,
-            doc: doc.trim() || undefined,
-            email: email.trim() || undefined,
-            phone: phone.trim() || undefined,
+            name: data.name.trim(),
+            contactName: data.contactName?.trim() || undefined,
+            doc: data.doc?.trim() || undefined,
+            email: data.email?.trim() || undefined,
+            phone: data.phone?.trim() || undefined,
             createdAt: clientToEdit?.createdAt,
           },
           isEdit
@@ -63,7 +63,7 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
         <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
           <div className="flex items-center gap-2">
             <UserRound className="w-5 h-5 text-brand" />
-            <h2 className="text-sm font-extrabold text-brand-dark uppercase">
+            <h2 className="font-display text-sm font-semibold text-brand-dark uppercase">
               {isEdit ? "Editar Cliente" : "Cadastrar Novo Cliente"}
             </h2>
           </div>
@@ -72,7 +72,7 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit(onValid)} className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
@@ -81,12 +81,11 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
               </label>
               <input
                 type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                {...register("name")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
                 placeholder="Ex. Oficina TechMec"
-                required
               />
+              {errors.name && <p className="text-[10px] text-red-600 mt-1">{errors.name.message}</p>}
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
@@ -95,8 +94,7 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
               </label>
               <input
                 type="text"
-                value={contactName}
-                onChange={(e) => setContactName(e.target.value)}
+                {...register("contactName")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
                 placeholder="Ex. Roberto Mendes"
               />
@@ -110,8 +108,7 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
             </label>
             <input
               type="text"
-              value={doc}
-              onChange={(e) => setDoc(e.target.value)}
+              {...register("doc")}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
               placeholder="Ex. CPF: 102.302.222-10"
             />
@@ -125,11 +122,11 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
               </label>
               <input
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                {...register("email")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
                 placeholder="cliente@email.com"
               />
+              {errors.email && <p className="text-[10px] text-red-600 mt-1">{errors.email.message}</p>}
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
@@ -138,8 +135,7 @@ export default function ClientModal({ client: clientToEdit, onClose, onSuccess }
               </label>
               <input
                 type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                {...register("phone")}
                 className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
                 placeholder="(11) 99999-9999"
               />

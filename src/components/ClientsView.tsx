@@ -56,10 +56,10 @@ export default function ClientsView({
   );
 
   return (
-    <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+    <div className="pt-8 pb-12 px-4 sm:px-6 lg:px-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
         <div>
-          <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">Carteira de Clientes</h3>
+          <h3 className="font-display text-xl font-semibold text-slate-900 tracking-tight">Carteira de Clientes</h3>
           <p className="text-xs text-slate-500 mt-1">
             {clients.length} clientes cadastrados. Selecione um cliente para ver o histórico de compras.
           </p>
@@ -135,7 +135,7 @@ export default function ClientsView({
                     {selectedClient.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-lg font-extrabold text-slate-900 truncate">{selectedClient.name}</h4>
+                    <h4 className="font-display text-lg font-semibold text-slate-900 truncate">{selectedClient.name}</h4>
                     <p className="text-xs text-slate-500">
                       {selectedClient.contactName || 'Sem contato responsável'} · Cliente desde {formatDateBR(selectedClient.createdAt)}
                     </p>
@@ -177,14 +177,14 @@ export default function ClientsView({
                       <ShoppingBag className="w-3.5 h-3.5" />
                       <span className="text-[9px] font-black uppercase tracking-wider">Compras</span>
                     </div>
-                    <p className="text-2xl font-black text-slate-900">{clientSales.length}</p>
+                    <p className="font-mono tabular-nums text-2xl font-semibold text-slate-900">{clientSales.length}</p>
                   </div>
                   <div className="bg-emerald-50 rounded-xl p-4">
                     <div className="flex items-center gap-1.5 text-emerald-600 mb-1">
                       <Wallet className="w-3.5 h-3.5" />
                       <span className="text-[9px] font-black uppercase tracking-wider">Total Gasto</span>
                     </div>
-                    <p className="text-base font-black text-slate-900 leading-tight mt-1">{formatBRL(totalSpent)}</p>
+                    <p className="font-mono tabular-nums text-base font-semibold text-slate-900 leading-tight mt-1">{formatBRL(totalSpent)}</p>
                   </div>
                 </div>
               </div>
