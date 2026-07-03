@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { toClientRow } from "@/lib/supabase";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { makeId } from "@/lib/id";
 import { clientSchema } from "@/lib/schemas";
 import type { Client } from "@/types";
@@ -32,5 +32,6 @@ export async function saveClient(data: SaveClientInput, isEdit: boolean): Promis
   const { error } = await supabase.from("clients").upsert(toClientRow(client) as never);
   if (error) throw error;
 
+  revalidateTag("clients");
   revalidatePath("/customers");
 }

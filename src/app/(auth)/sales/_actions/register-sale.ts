@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { makeId } from "@/lib/id";
 import { deriveStatus } from "@/lib/stock";
 import { registerSaleInputSchema } from "@/lib/schemas";
@@ -85,6 +85,9 @@ export async function registerSale(input: RegisterSaleInput): Promise<void> {
     })
   );
 
+  revalidateTag("sales");
+  revalidateTag("products");
+  revalidateTag("stock_movements");
   revalidatePath("/sales");
   revalidatePath("/dashboard");
   revalidatePath("/inventory");

@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { toProductRow } from "@/lib/supabase";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { makeId } from "@/lib/id";
 import { deriveStatus } from "@/lib/stock";
 import { productSchema } from "@/lib/schemas";
@@ -48,6 +48,8 @@ export async function saveProduct(data: SaveProductInput, isEdit: boolean): Prom
     });
   }
 
+  revalidateTag("products");
+  revalidateTag("stock_movements");
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
 }

@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { storeSettingsSchema, type StoreSettingsFormValues } from "@/lib/schemas";
 
 export async function saveStoreSettings(data: StoreSettingsFormValues): Promise<void> {
@@ -22,5 +22,6 @@ export async function saveStoreSettings(data: StoreSettingsFormValues): Promise<
 
   if (error) throw error;
 
+  revalidateTag("store_settings");
   revalidatePath("/settings", "layout");
 }

@@ -25,17 +25,22 @@ export async function middleware(request: NextRequest) {
     },
   );
 
+  // getUser() contacta o servidor de Auth a cada request — é o que garante que um usuário
+  // banido/deletado ou com sessão revogada seja barrado imediatamente, não só quando o
+  // access token expirar. É o único gate de autenticação da aplicação, então a verificação
+  // tem que ser autoritativa, não apenas local.
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const isAuthenticated = !!user;
 
   const { pathname } = request.nextUrl;
 
-  if (!user && pathname !== "/login") {
+  if (!isAuthenticated && pathname !== "/login") {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (user && pathname === "/login") {
+  if (isAuthenticated && pathname === "/login") {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { needsReplenish, deriveStatus } from "@/lib/stock";
 import { makeId } from "@/lib/id";
 
@@ -45,6 +45,8 @@ export async function bulkReplenish(): Promise<void> {
     })
   );
 
+  revalidateTag("products");
+  revalidateTag("stock_movements");
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
 }

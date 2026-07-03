@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
 import RemoteImage from "./RemoteImage";
-import { X, Clipboard, DollarSign, Image as ImageIcon, AlertTriangle, Loader2 } from "lucide-react";
+import { X, Clipboard, DollarSign, Image as ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
 import { saveProduct } from "@/app/(auth)/inventory/_actions/save-product";
 import { productSchema, type ProductFormValues } from "@/lib/schemas";
 import type { Product } from "@/types";
@@ -23,14 +22,11 @@ interface ProductModalProps {
 
 export default function ProductModal({ product: productToEdit, onClose, onSuccess }: ProductModalProps) {
   const isEdit = !!productToEdit;
-  const [existingIds, setExistingIds] = useState<string[]>([]);
   const [isPending, startTransition] = useTransition();
-  const [formError, setFormError] = useState("");
 
   const {
     register,
     handleSubmit,
-    setValue,
     watch,
     formState: { errors },
   } = useForm<z.input<typeof productSchema>, unknown, ProductFormValues>({
@@ -47,7 +43,9 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
           imageUrl: productToEdit.imageUrl,
         }
       : {
-          id: "",
+          // id provisório só para satisfazer o form/preview — o server action
+          // save-product.ts regenera e garante unicidade ao salvar (sem round-trip aqui).
+          id: makeId("#TECH-", [], 4),
           name: "",
           category: "Hardware",
           stockLevel: 1,
@@ -59,25 +57,7 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
   });
   const imageUrl = watch("imageUrl");
 
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.from("products").select("id").then(({ data }) => {
-      const ids = (data ?? []).map((r) => r.id);
-      setExistingIds(ids);
-      if (!productToEdit) {
-        setValue("id", makeId("#TECH-", ids, 4));
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productToEdit]);
-
   const onValid = (data: ProductFormValues) => {
-    setFormError("");
-    if (!isEdit && existingIds.includes(data.id.trim())) {
-      setFormError(`O SKU ${data.id.trim()} já existe. Escolha outro código.`);
-      return;
-    }
-
     const productData: Product = {
       id: data.id.trim(),
       name: data.name,
@@ -235,13 +215,6 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
               <p className="text-[10px] text-slate-400 font-semibold leading-normal">
                 Previsualização da foto selecionada.
               </p>
-            </div>
-          )}
-
-          {formError && (
-            <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-700 text-[11px] font-semibold px-3 py-2 rounded-lg">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>{formError}</span>
             </div>
           )}
 

@@ -149,17 +149,6 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
 
   const activeSelectedProduct = productById.get(selectedProductId);
 
-  if (loadingData) {
-    return (
-      <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50">
-        <div className="bg-white rounded-2xl p-8 flex items-center gap-3 shadow-2xl">
-          <Loader2 className="w-5 h-5 text-brand animate-spin" />
-          <span className="text-sm font-semibold text-slate-600">Carregando catálogo...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto animate-fadeIn">
       <div className="bg-white rounded-2xl border border-slate-200 max-w-4xl w-full shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
@@ -258,14 +247,19 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
                 <select
                   value={selectedProductId}
                   onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 outline-none"
+                  disabled={loadingData}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-700 outline-none disabled:opacity-60"
                 >
-                  {productOptions.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.id}) — {formatBRL(p.salePrice)}
-                    </option>
-                  ))}
-                  {productOptions.length === 0 && <option value="">Nenhum produto encontrado</option>}
+                  {loadingData && <option value="">Carregando catálogo...</option>}
+                  {!loadingData &&
+                    productOptions.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.id}) — {formatBRL(p.salePrice)}
+                      </option>
+                    ))}
+                  {!loadingData && productOptions.length === 0 && (
+                    <option value="">Nenhum produto encontrado</option>
+                  )}
                 </select>
               </div>
               <div>
@@ -281,7 +275,8 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
                   <button
                     type="button"
                     onClick={handleAddToCart}
-                    className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white px-3 py-1.5 rounded-r-lg font-bold text-xs transition-all"
+                    disabled={loadingData}
+                    className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand disabled:opacity-50 text-white px-3 py-1.5 rounded-r-lg font-bold text-xs transition-all"
                   >
                     OK
                   </button>
