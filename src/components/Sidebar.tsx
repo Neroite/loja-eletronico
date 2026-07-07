@@ -5,16 +5,19 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Receipt,
+  TrendingUp,
   Warehouse,
   Users,
   Settings,
   Plus,
 } from "lucide-react";
 import { useGlobalModal } from "./modal-provider";
+import { canManageSettings, canWrite, type Role } from "@/lib/auth/roles";
 
 const MENU = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/sales", label: "Vendas", icon: Receipt },
+  { href: "/reports", label: "Relatórios", icon: TrendingUp },
   { href: "/inventory", label: "Estoque", icon: Warehouse },
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/settings", label: "Configurações", icon: Settings },
@@ -22,12 +25,17 @@ const MENU = [
 
 interface SidebarProps {
   storeName: string;
+  role: Role | null;
   mobileOpen?: boolean;
 }
 
-export default function Sidebar({ storeName, mobileOpen = false }: SidebarProps) {
+export default function Sidebar({ storeName, role, mobileOpen = false }: SidebarProps) {
   const pathname = usePathname();
   const { open } = useGlobalModal();
+  const menu = MENU.filter(
+    (item) => item.href !== "/settings" || (role && canManageSettings(role)),
+  );
+  const showWriteActions = !!role && canWrite(role);
 
   return (
     <aside
@@ -53,7 +61,7 @@ export default function Sidebar({ storeName, mobileOpen = false }: SidebarProps)
       <div className="relative flex-1 min-h-0 flex flex-col">
         {/* Navigation */}
         <nav className="flex-1 px-3 space-y-1 pt-6">
-          {MENU.map((item) => {
+          {menu.map((item) => {
             const Icon = item.icon;
             const isActive =
               pathname === item.href ||
@@ -84,22 +92,24 @@ export default function Sidebar({ storeName, mobileOpen = false }: SidebarProps)
         </nav>
 
         {/* Global actions */}
-        <div className="px-4 mt-auto space-y-2">
-          <button
-            onClick={() => open("new-sale")}
-            className="w-full bg-brand hover:bg-brand/85 text-white py-3 px-4 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nova Venda</span>
-          </button>
-          <button
-            onClick={() => open("new-product")}
-            className="w-full bg-surface-active hover:bg-white/10 text-white/80 py-2.5 px-4 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Cadastrar Produto</span>
-          </button>
-        </div>
+        {showWriteActions && (
+          <div className="px-4 mt-auto space-y-2">
+            <button
+              onClick={() => open("new-sale")}
+              className="w-full bg-brand hover:bg-brand/85 text-white py-3 px-4 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Nova Venda</span>
+            </button>
+            <button
+              onClick={() => open("new-product")}
+              className="w-full bg-surface-active hover:bg-white/10 text-white/80 py-2.5 px-4 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Cadastrar Produto</span>
+            </button>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="mt-6 border-t border-white/10 pt-4 pb-6 px-3 space-y-0.5">

@@ -1,18 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
 import RemoteImage from "./RemoteImage";
-import { X, Clipboard, DollarSign, Image as ImageIcon, Loader2 } from "lucide-react";
+import { X, Clipboard, DollarSign, Image as ImageIcon, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { saveProduct } from "@/app/(auth)/inventory/_actions/save-product";
+import { createClient } from "@/lib/supabase/client";
 import { productSchema, type ProductFormValues } from "@/lib/schemas";
 import type { Product } from "@/types";
 import { PRODUCT_IMAGE_SAMPLES } from "@/initialData";
-import { deriveStatus } from "@/lib/stock";
 import { makeId } from "@/lib/id";
+
+const UPLOAD_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+const UPLOAD_MAX_BYTES = 2 * 1024 * 1024; // 2MB
 
 interface ProductModalProps {
   product?: Product;
@@ -57,21 +64,74 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
   });
   const imageUrl = watch("imageUrl");
 
-  const onValid = (data: ProductFormValues) => {
-    const productData: Product = {
-      id: data.id.trim(),
-      name: data.name,
-      category: data.category,
-      stockLevel: data.stockLevel,
-      maxStock: data.maxStock,
-      status: deriveStatus(data.stockLevel),
-      costPrice: data.costPrice,
-      salePrice: data.salePrice,
-      imageUrl: data.imageUrl,
-    };
+  // Foto enviada pelo usuário (upload direto do browser ao Supabase Storage,
+  // sem passar pelo Server Action — evita o bodySizeLimit de ~1MB).
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [localPreview, setLocalPreview] = useState<string | null>(null);
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!UPLOAD_TYPES[file.type]) {
+      toast.error("Formato inválido. Envie uma imagem JPG, PNG ou WebP.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > UPLOAD_MAX_BYTES) {
+      toast.error("A imagem deve ter no máximo 2MB.");
+      e.target.value = "";
+      return;
+    }
+    if (localPreview) URL.revokeObjectURL(localPreview);
+    setImageFile(file);
+    setLocalPreview(URL.createObjectURL(file));
+  };
+
+  const clearImageFile = () => {
+    if (localPreview) URL.revokeObjectURL(localPreview);
+    setImageFile(null);
+    setLocalPreview(null);
+  };
+
+  const uploadImage = async (file: File, productName: string): Promise<string> => {
+    const supabase = createClient();
+    // Chave sem `#`/acentos (SKUs contêm `#`, inválido em object keys do Storage)
+    const slug =
+      productName
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 40) || "produto";
+    const path = `products/${Date.now()}-${slug}.${UPLOAD_TYPES[file.type]}`;
+
+    const { error } = await supabase.storage
+      .from("product-images")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw error;
+
+    return supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+  };
+
+  const onValid = (data: ProductFormValues) => {
     startTransition(async () => {
       try {
+        const finalImageUrl = imageFile ? await uploadImage(imageFile, data.name) : data.imageUrl;
+
+        // O status não é calculado aqui: o server action deriva pelos thresholds
+        // configurados em store_settings (fonte única no servidor).
+        const productData: Omit<Product, "status"> = {
+          id: data.id.trim(),
+          name: data.name,
+          category: data.category,
+          stockLevel: data.stockLevel,
+          maxStock: data.maxStock,
+          costPrice: data.costPrice,
+          salePrice: data.salePrice,
+          imageUrl: finalImageUrl,
+        };
+
         await saveProduct(productData, isEdit);
         toast.success(isEdit ? "Produto atualizado com sucesso." : "Produto cadastrado com sucesso.");
         onSuccess();
@@ -142,7 +202,8 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
               </label>
               <select
                 {...register("imageUrl")}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-brand"
+                disabled={!!imageFile}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:bg-white focus:ring-1 focus:ring-brand disabled:opacity-50"
               >
                 {PRODUCT_IMAGE_SAMPLES.map((imgOpt) => (
                   <option key={imgOpt.url} value={imgOpt.url}>
@@ -150,6 +211,30 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 flex items-center gap-1">
+              <Upload className="w-3.5 h-3.5 text-slate-400" />
+              <span>Ou envie uma foto própria (JPG/PNG/WebP, máx. 2MB)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleFileChange}
+                className="flex-1 text-[11px] text-slate-500 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-brand-tint file:text-brand file:text-[11px] file:font-bold file:cursor-pointer hover:file:bg-brand/10 cursor-pointer"
+              />
+              {imageFile && (
+                <button
+                  type="button"
+                  onClick={clearImageFile}
+                  className="text-[11px] font-bold text-red-600 hover:underline shrink-0"
+                >
+                  Remover
+                </button>
+              )}
             </div>
           </div>
 
@@ -207,13 +292,21 @@ export default function ProductModal({ product: productToEdit, onClose, onSucces
             </div>
           </div>
 
-          {imageUrl && (
+          {(localPreview || imageUrl) && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 flex items-center gap-3">
               <div className="w-12 h-12 rounded-lg bg-slate-200 overflow-hidden shrink-0">
-                <RemoteImage src={imageUrl} width={48} height={48} className="w-full h-full object-cover" alt="Prévia do produto" />
+                {localPreview ? (
+                  // Blob URL local — next/image não otimiza object URLs, preview direto
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={localPreview} className="w-full h-full object-cover" alt="Prévia do produto" />
+                ) : (
+                  <RemoteImage src={imageUrl ?? ""} width={48} height={48} className="w-full h-full object-cover" alt="Prévia do produto" />
+                )}
               </div>
               <p className="text-[10px] text-slate-400 font-semibold leading-normal">
-                Previsualização da foto selecionada.
+                {localPreview
+                  ? `Foto enviada: ${imageFile?.name} — será usada no lugar da amostra.`
+                  : 'Previsualização da foto selecionada.'}
               </p>
             </div>
           )}

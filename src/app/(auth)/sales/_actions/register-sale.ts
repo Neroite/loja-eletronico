@@ -3,8 +3,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { makeId } from "@/lib/id";
-import { deriveStatus } from "@/lib/stock";
 import { registerSaleInputSchema } from "@/lib/schemas";
+import { requireRole } from "@/lib/auth/require-role";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import type { PaymentMethod, SaleStatus, SaleItem } from "@/types";
 
 interface RegisterSaleInput {
@@ -23,6 +24,9 @@ export async function registerSale(input: RegisterSaleInput): Promise<void> {
     throw new Error(parsed.error.issues.map((i) => i.message).join("; "));
   }
 
+  await requireRole(["admin", "editor"]);
+  await enforceRateLimit("register-sale");
+
   const supabase = await createClient();
 
   const { data: existingSales } = await supabase.from("sales").select("id");
@@ -31,59 +35,38 @@ export async function registerSale(input: RegisterSaleInput): Promise<void> {
   const now = new Date().toISOString();
   const totalValue = input.items.reduce((acc, i) => acc + i.quantity * i.price, 0);
 
-  const [{ error: saleError }, { data: existingMovements }] = await Promise.all([
-    supabase.from("sales").insert({
-      id: saleId,
-      created_at: now,
-      client_id: input.clientId ?? null,
-      client_name: input.clientName,
-      client_doc: input.clientDoc,
-      seller: input.seller,
-      payment_method: input.paymentMethod,
-      total_value: totalValue,
-      status: input.status,
-      items: input.items,
-    }),
-    supabase.from("stock_movements").select("id"),
-  ]);
+  const { error: saleError } = await supabase.from("sales").insert({
+    id: saleId,
+    created_at: now,
+    client_id: input.clientId ?? null,
+    client_name: input.clientName,
+    client_doc: input.clientDoc,
+    seller: input.seller,
+    payment_method: input.paymentMethod,
+    total_value: totalValue,
+    status: input.status,
+    items: input.items,
+  });
 
   if (saleError) throw saleError;
 
-  // Cart items are unique per productId (NewSaleModal merges quantities), so each
-  // item touches a different product row — safe to process concurrently.
-  const movIds = (existingMovements ?? []).map((m) => m.id);
-  await Promise.all(
-    input.items.map(async (item) => {
-      const { data: product } = await supabase
-        .from("products")
-        .select("stock_level, name")
-        .eq("id", item.productId)
-        .single();
-
-      if (!product) return;
-
-      const newStock = product.stock_level - item.quantity;
-      const movId = makeId("#MOV-", movIds, 5);
-      movIds.push(movId);
-
-      await Promise.all([
-        supabase
-          .from("products")
-          .update({ stock_level: newStock, status: deriveStatus(newStock) })
-          .eq("id", item.productId),
-        supabase.from("stock_movements").insert({
-          id: movId,
-          product_id: item.productId,
-          product_name: item.name,
-          type: "venda",
-          delta: -item.quantity,
-          resulting_stock: newStock,
-          reason: `Venda ${saleId}`,
-          created_at: now,
-        }),
-      ]);
-    })
+  // Baixa de estoque via RPC atômica (lock de linha + guarda de estoque negativo +
+  // insert do movimento na mesma transação). Cart items are unique per productId
+  // (NewSaleModal merges quantities), so each item touches a different product
+  // row — safe to process concurrently.
+  const results = await Promise.all(
+    input.items.map((item) =>
+      supabase.rpc("apply_stock_movement", {
+        p_product_id: item.productId,
+        p_delta: -item.quantity,
+        p_type: "venda",
+        p_reason: `Venda ${saleId}`,
+      })
+    )
   );
+
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
 
   revalidateTag("sales");
   revalidateTag("products");

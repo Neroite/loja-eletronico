@@ -88,15 +88,40 @@ export const adjustStockSchema = z.object({
 
 export type AdjustStockFormValues = z.infer<typeof adjustStockSchema>;
 
-export const storeSettingsSchema = z.object({
-  storeName: z.string().min(2, "Nome deve ter ao menos 2 caracteres").max(80, "Nome muito longo"),
-  storeSegment: z.enum([
-    "Informática & Eletrônicos",
-    "Celulares & Acessórios",
-    "Games & Consoles",
-    "Som & Áudio",
-    "Outros",
-  ]),
-});
+export const storeSettingsSchema = z
+  .object({
+    storeName: z.string().min(2, "Nome deve ter ao menos 2 caracteres").max(80, "Nome muito longo"),
+    storeSegment: z.enum([
+      "Informática & Eletrônicos",
+      "Celulares & Acessórios",
+      "Games & Consoles",
+      "Som & Áudio",
+      "Outros",
+    ]),
+    stockCritical: z.coerce
+      .number()
+      .int("Use um número inteiro")
+      .min(0, "Limite crítico não pode ser negativo"),
+    stockLow: z.coerce
+      .number()
+      .int("Use um número inteiro")
+      .min(0, "Limite de estoque baixo não pode ser negativo"),
+  })
+  .superRefine((data, ctx) => {
+    if (data.stockLow < data.stockCritical) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["stockLow"],
+        message: "O limite de estoque baixo deve ser maior ou igual ao limite crítico.",
+      });
+    }
+  });
 
 export type StoreSettingsFormValues = z.infer<typeof storeSettingsSchema>;
+
+export const updateUserRoleSchema = z.object({
+  userId: z.string().uuid("ID de usuário inválido"),
+  role: z.enum(["admin", "editor", "user"]),
+});
+
+export type UpdateUserRoleValues = z.infer<typeof updateUserRoleSchema>;

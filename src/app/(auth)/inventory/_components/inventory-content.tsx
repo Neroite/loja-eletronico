@@ -9,14 +9,16 @@ import StockMovementModal from "@/components/StockMovementModal";
 import { useSearch } from "@/app/(auth)/_components/search-context";
 import { deleteProduct } from "../_actions/delete-product";
 import { bulkReplenish } from "../_actions/bulk-replenish";
+import type { Role } from "@/lib/auth/roles";
 import type { Product, StockMovement } from "@/types";
 
 interface InventoryContentProps {
   products: Product[];
   movements: StockMovement[];
+  role: Role | null;
 }
 
-export default function InventoryContent({ products, movements }: InventoryContentProps) {
+export default function InventoryContent({ products, movements, role }: InventoryContentProps) {
   const router = useRouter();
   const { query } = useSearch();
   const [isPending, startTransition] = useTransition();
@@ -63,6 +65,7 @@ export default function InventoryContent({ products, movements }: InventoryConte
       <InventoryView
         products={products}
         searchQuery={query}
+        role={role}
         onOpenProductRegister={() => {
           setEditProduct(undefined);
           setShowProductModal(true);
@@ -81,9 +84,6 @@ export default function InventoryContent({ products, movements }: InventoryConte
           }
         }}
         onBulkReplenish={handleBulkReplenish}
-        onRecalcStock={() => {
-          toast.info("O status já reflete o estoque atual.");
-        }}
         onOpenStock={setStockProduct}
       />
 

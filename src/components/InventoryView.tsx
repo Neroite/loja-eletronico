@@ -1,37 +1,41 @@
 import { useState, useMemo, useEffect } from 'react';
+import Link from 'next/link';
 import RemoteImage from './RemoteImage';
 import {
   Plus, Download, Filter, Edit, Trash2, AlertOctagon,
-  TrendingDown, Coins, Warehouse, FolderOpen, RefreshCw,
+  TrendingDown, Coins, Warehouse, FolderOpen,
   History, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Product } from '../types';
 import { formatBRL } from '../lib/format';
 import { needsReplenish } from '../lib/stock';
 import { downloadCSV } from '../lib/csv';
+import { canDelete, canWrite, type Role } from '../lib/auth/roles';
 import StockBadge, { progressBarColor } from './StockBadge';
 
 interface InventoryViewProps {
   products: Product[];
   searchQuery: string;
+  role: Role | null;
   onOpenProductRegister: () => void;
   onEditProduct: (product: Product) => void;
   onDeleteProduct: (productId: string) => void;
   onBulkReplenish: () => void;
-  onRecalcStock: () => void;
   onOpenStock: (product: Product) => void;
 }
 
 export default function InventoryView({
   products,
   searchQuery,
+  role,
   onOpenProductRegister,
   onEditProduct,
   onDeleteProduct,
   onBulkReplenish,
-  onRecalcStock,
   onOpenStock
 }: InventoryViewProps) {
+  const showWrite = !!role && canWrite(role);
+  const showDelete = !!role && canDelete(role);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
@@ -74,7 +78,7 @@ export default function InventoryView({
 
   const stats = useMemo(() => {
     const totalUnits = products.reduce((acc, p) => acc + p.stockLevel, 0);
-    const criticalCount = products.filter((p) => needsReplenish(p.stockLevel)).length;
+    const criticalCount = products.filter((p) => needsReplenish(p.status)).length;
     const stockValuation = products.reduce((acc, p) => acc + p.costPrice * p.stockLevel, 0);
     return { totalUnits, criticalCount, stockValuation };
   }, [products]);
@@ -120,13 +124,15 @@ export default function InventoryView({
             <span>Exportar CSV</span>
           </button>
 
-          <button
-            onClick={onOpenProductRegister}
-            className="flex items-center gap-2 bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white px-4 py-2 rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-brand/20"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Cadastrar Produto</span>
-          </button>
+          {showWrite && (
+            <button
+              onClick={onOpenProductRegister}
+              className="flex items-center gap-2 bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white px-4 py-2 rounded-xl text-xs font-bold active:scale-95 transition-all shadow-md shadow-brand/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Cadastrar Produto</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -297,24 +303,28 @@ export default function InventoryView({
                         >
                           <History className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => onEditProduct(product)}
-                          className="p-1.5 text-slate-400 hover:text-brand hover:bg-brand-tint rounded-lg transition-colors"
-                          title="Editar Item"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Remover ${product.name} (${product.id}) do inventário? Ação irreversível.`)) {
-                              onDeleteProduct(product.id);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Excluir Item"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {showWrite && (
+                          <button
+                            onClick={() => onEditProduct(product)}
+                            className="p-1.5 text-slate-400 hover:text-brand hover:bg-brand-tint rounded-lg transition-colors"
+                            title="Editar Item"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
+                        {showDelete && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Remover ${product.name} (${product.id}) do inventário? Ação irreversível.`)) {
+                                onDeleteProduct(product.id);
+                              }
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Excluir Item"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -384,12 +394,14 @@ export default function InventoryView({
             <p className="text-white/85 text-xs mb-4 max-w-sm">
               {stats.criticalCount} item(ns) estão abaixo do nível mínimo e podem ser repostos automaticamente à capacidade máxima.
             </p>
-            <button
-              onClick={onBulkReplenish}
-              className="bg-white text-brand hover:bg-slate-50 px-4 py-2 rounded-xl font-bold text-xs shadow transition-colors active:scale-95"
-            >
-              Gerar Ordem de Compra Automática
-            </button>
+            {showWrite && (
+              <button
+                onClick={onBulkReplenish}
+                className="bg-white text-brand hover:bg-slate-50 px-4 py-2 rounded-xl font-bold text-xs shadow transition-colors active:scale-95"
+              >
+                Gerar Ordem de Compra Automática
+              </button>
+            )}
           </div>
           <div className="absolute right-[-10px] bottom-[-20px] opacity-10 group-hover:scale-110 transition-transform duration-500 pointer-events-none">
             <TrendingDown className="w-40 h-40 text-white" />
@@ -398,19 +410,19 @@ export default function InventoryView({
 
         <div className="bg-slate-50 p-6 rounded-2xl flex items-center gap-5 border border-slate-200">
           <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center text-brand shrink-0 border border-brand/5">
-            <RefreshCw className="w-5 h-5" />
+            <History className="w-5 h-5" />
           </div>
           <div>
-            <h5 className="text-xs font-black text-slate-800 uppercase tracking-widest">Recalcular Status</h5>
+            <h5 className="text-xs font-black text-slate-800 uppercase tracking-widest">Movimentações de Estoque</h5>
             <p className="text-xs text-slate-500 mt-1">
-              Reavalia o status (Em Estoque / Baixo / Crítico) de todos os produtos conforme os níveis atuais.
+              Auditoria completa de entradas, saídas, vendas, estornos e reposições de todos os produtos.
             </p>
-            <button
-              onClick={onRecalcStock}
+            <Link
+              href="/inventory/movements"
               className="text-brand font-bold text-[11px] mt-2 inline-block hover:underline"
             >
-              Recalcular Status do Estoque
-            </button>
+              Ver Histórico Completo
+            </Link>
           </div>
         </div>
       </div>

@@ -141,19 +141,113 @@ export interface Database {
           store_name: string;
           store_segment: string;
           updated_at: string;
+          stock_critical: number;
+          stock_low: number;
         };
         Insert: {
           id?: string;
           store_name?: string;
           store_segment?: string;
           updated_at?: string;
+          stock_critical?: number;
+          stock_low?: number;
         };
         Update: Partial<Database['public']['Tables']['store_settings']['Insert']>;
         Relationships: [];
       };
+      profiles: {
+        Row: {
+          id: string;
+          email: string | null;
+          role: 'admin' | 'editor' | 'user';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email?: string | null;
+          role?: 'admin' | 'editor' | 'user';
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
+        Relationships: [];
+      };
+      rate_limit_hits: {
+        Row: {
+          id: number;
+          ip: string;
+          action: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          ip: string;
+          action: string;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['rate_limit_hits']['Insert']>;
+        Relationships: [];
+      };
+      audit_log: {
+        Row: {
+          id: number;
+          table_name: string;
+          row_id: string;
+          action: 'insert' | 'update' | 'delete';
+          actor: string | null;
+          old_data: Json | null;
+          new_data: Json | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          table_name: string;
+          row_id: string;
+          action: 'insert' | 'update' | 'delete';
+          actor?: string | null;
+          old_data?: Json | null;
+          new_data?: Json | null;
+          created_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['audit_log']['Insert']>;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      apply_stock_movement: {
+        Args: {
+          p_product_id: string;
+          p_delta: number | null;
+          p_type: string;
+          p_reason?: string | null;
+          p_set_to?: number | null;
+        };
+        Returns: number;
+      };
+      replenish_all_low: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      recalc_product_statuses: {
+        Args: Record<string, never>;
+        Returns: undefined;
+      };
+      current_user_role: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      check_rate_limit: {
+        Args: {
+          p_ip: string;
+          p_action: string;
+          p_limit: number;
+          p_window_seconds: number;
+        };
+        Returns: boolean;
+      };
+    };
     Enums: Record<string, never>;
   };
 }

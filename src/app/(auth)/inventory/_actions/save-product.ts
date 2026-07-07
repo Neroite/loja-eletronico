@@ -6,6 +6,9 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { makeId } from "@/lib/id";
 import { deriveStatus } from "@/lib/stock";
 import { productSchema } from "@/lib/schemas";
+import { getStoreSettings } from "../../settings/_data-access/get-store-settings";
+import { requireRole } from "@/lib/auth/require-role";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import type { Product } from "@/types";
 
 type SaveProductInput = Omit<Product, "status">;
@@ -16,9 +19,16 @@ export async function saveProduct(data: SaveProductInput, isEdit: boolean): Prom
     throw new Error(parsed.error.issues.map((i) => i.message).join("; "));
   }
 
+  await requireRole(["admin", "editor"]);
+  await enforceRateLimit("save-product");
+
   const supabase = await createClient();
 
-  const product: Product = { ...data, status: deriveStatus(data.stockLevel) };
+  const { stockCritical, stockLow } = await getStoreSettings();
+  const product: Product = {
+    ...data,
+    status: deriveStatus(data.stockLevel, { critical: stockCritical, low: stockLow }),
+  };
 
   if (!isEdit) {
     const { data: existing } = await supabase.from("products").select("id");

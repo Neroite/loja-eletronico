@@ -94,7 +94,7 @@ export default function DashboardView({
       ticket,
       deltaSales: pct(active.length, prevCount),
       deltaReceived: pct(received, prevReceived),
-      replenish: products.filter((p) => needsReplenish(p.stockLevel)).length,
+      replenish: products.filter((p) => needsReplenish(p.status)).length,
       stockValue: products.reduce((acc, p) => acc + p.costPrice * p.stockLevel, 0),
       skuCount: products.length
     };

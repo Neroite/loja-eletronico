@@ -2,10 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath, revalidateTag } from "next/cache";
-import { makeId } from "@/lib/id";
-import { deriveStatus } from "@/lib/stock";
+import { requireRole } from "@/lib/auth/require-role";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export async function refundSale(saleId: string): Promise<void> {
+  await requireRole(["admin", "editor"]);
+  await enforceRateLimit("refund-sale");
+
   const supabase = await createClient();
 
   const { data: sale } = await supabase
@@ -16,47 +19,38 @@ export async function refundSale(saleId: string): Promise<void> {
 
   if (!sale || sale.status === "Cancelado") return;
 
-  const now = new Date().toISOString();
-  const [, { data: existingMovements }] = await Promise.all([
-    supabase.from("sales").update({ status: "Cancelado" }).eq("id", saleId),
-    supabase.from("stock_movements").select("id"),
-  ]);
+  const { error: updateError } = await supabase
+    .from("sales")
+    .update({ status: "Cancelado" })
+    .eq("id", saleId);
+  if (updateError) throw updateError;
 
-  // Sale items are unique per productId (NewSaleModal merges quantities), so each
-  // item touches a different product row — safe to process concurrently.
-  const movIds = (existingMovements ?? []).map((m) => m.id);
-  await Promise.all(
-    sale.items.map(async (item) => {
-      const { data: product } = await supabase
-        .from("products")
-        .select("stock_level, name")
-        .eq("id", item.productId)
-        .single();
+  // Produtos podem ter sido excluídos depois da venda — estorna só os que ainda
+  // existem (comportamento anterior: itens sem produto eram ignorados).
+  const { data: existingProducts } = await supabase
+    .from("products")
+    .select("id")
+    .in("id", sale.items.map((i) => i.productId));
+  const existingIds = new Set((existingProducts ?? []).map((p) => p.id));
 
-      if (!product) return;
-
-      const newStock = product.stock_level + item.quantity;
-      const movId = makeId("#MOV-", movIds, 5);
-      movIds.push(movId);
-
-      await Promise.all([
-        supabase
-          .from("products")
-          .update({ stock_level: newStock, status: deriveStatus(newStock) })
-          .eq("id", item.productId),
-        supabase.from("stock_movements").insert({
-          id: movId,
-          product_id: item.productId,
-          product_name: item.name,
-          type: "estorno",
-          delta: item.quantity,
-          resulting_stock: newStock,
-          reason: `Estorno da venda ${saleId}`,
-          created_at: now,
-        }),
-      ]);
-    })
+  // Devolução ao estoque via RPC atômica. Sale items are unique per productId
+  // (NewSaleModal merges quantities), so each item touches a different product
+  // row — safe to process concurrently.
+  const results = await Promise.all(
+    sale.items
+      .filter((item) => existingIds.has(item.productId))
+      .map((item) =>
+        supabase.rpc("apply_stock_movement", {
+          p_product_id: item.productId,
+          p_delta: item.quantity,
+          p_type: "estorno",
+          p_reason: `Estorno da venda ${saleId}`,
+        })
+      )
   );
+
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
 
   revalidateTag("sales");
   revalidateTag("products");

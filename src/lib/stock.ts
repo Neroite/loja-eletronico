@@ -1,22 +1,31 @@
 import { Product } from '../types';
 
 // Single source of truth for stock-status rules.
-// Previously this logic was copy-pasted in App.tsx (x2) and ProductModal, with the
-// magic number `<= 8` scattered across 6 more spots — and "Crítico" meant `<=2` in
-// some places but `<=8` in others. Now there is one consistent definition.
+//
+// Os limiares são configuráveis por loja (Configurações → Parâmetros de Estoque,
+// persistidos em store_settings). O status de cada produto é SEMPRE derivado no
+// servidor: as escritas de estoque passam pela RPC `apply_stock_movement` (que lê
+// o singleton) e mudar os limiares dispara `recalc_product_statuses`. Por isso os
+// componentes de UI devem confiar em `product.status` (via `needsReplenish`) em
+// vez de re-derivar a partir de stock_level com limiares possivelmente velhos.
 export const STOCK = {
-  critical: 2, // <= 2 units => Crítico
-  low: 8       // <= 8 units => Estoque Baixo
+  critical: 2, // <= 2 units => Crítico (fallback default)
+  low: 8       // <= 8 units => Estoque Baixo (fallback default)
 } as const;
 
-export const deriveStatus = (stockLevel: number): Product['status'] => {
-  if (stockLevel <= STOCK.critical) return 'Crítico';
-  if (stockLevel <= STOCK.low) return 'Estoque Baixo';
+export type StockThresholds = { critical: number; low: number };
+
+// Usado apenas no caminho de upsert de produto (save-product), que recebe os
+// limiares atuais de store_settings; todo o resto deriva no Postgres.
+export const deriveStatus = (
+  stockLevel: number,
+  t: StockThresholds = STOCK
+): Product['status'] => {
+  if (stockLevel <= t.critical) return 'Crítico';
+  if (stockLevel <= t.low) return 'Estoque Baixo';
   return 'Em Estoque';
 };
 
-export const isCritical = (stockLevel: number): boolean => stockLevel <= STOCK.critical;
-export const isLow = (stockLevel: number): boolean => stockLevel <= STOCK.low;
-
-// Items that need restocking (low OR critical).
-export const needsReplenish = (stockLevel: number): boolean => stockLevel <= STOCK.low;
+// Items that need restocking (low OR critical) — judged by the stored status.
+export const needsReplenish = (status: Product['status']): boolean =>
+  status !== 'Em Estoque';

@@ -8,14 +8,16 @@ import ClientModal from "@/components/ClientModal";
 import SaleDetailsModal from "@/components/SaleDetailsModal";
 import { useSearch } from "@/app/(auth)/_components/search-context";
 import { deleteClient } from "../_actions/delete-client";
+import type { Role } from "@/lib/auth/roles";
 import type { Client, Sale } from "@/types";
 
 interface CustomersContentProps {
   clients: Client[];
   sales: Sale[];
+  role: Role | null;
 }
 
-export default function CustomersContent({ clients, sales }: CustomersContentProps) {
+export default function CustomersContent({ clients, sales, role }: CustomersContentProps) {
   const router = useRouter();
   const { query } = useSearch();
   const [isPending, startTransition] = useTransition();
@@ -47,6 +49,7 @@ export default function CustomersContent({ clients, sales }: CustomersContentPro
         clients={clients}
         sales={sales}
         searchQuery={query}
+        role={role}
         onOpenNewClient={() => {
           setEditClient(undefined);
           setShowClientModal(true);

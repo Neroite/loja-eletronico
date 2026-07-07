@@ -8,15 +8,17 @@ export default async function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [{ notificationsCount, userEmail }, { storeName }] = await Promise.all([
-    getHeaderData(),
-    getStoreSettings(),
-  ]);
+  const [{ notificationsCount, lowStockProducts, userEmail, role }, { storeName }] =
+    await Promise.all([getHeaderData(), getStoreSettings()]);
 
   return (
     <>
-      <Sidebar storeName={storeName} />
-      <AppShell notificationsCount={notificationsCount} userEmail={userEmail}>
+      <Sidebar storeName={storeName} role={role} />
+      <AppShell
+        notificationsCount={notificationsCount}
+        lowStockProducts={lowStockProducts}
+        userEmail={userEmail}
+      >
         {children}
       </AppShell>
     </>

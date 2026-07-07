@@ -12,7 +12,7 @@ import { saleSchema } from "@/lib/schemas";
 import { z } from "zod";
 import type { Product, Client, SaleItem } from "@/types";
 import { formatBRL } from "@/lib/format";
-import { isLow } from "@/lib/stock";
+import { needsReplenish } from "@/lib/stock";
 
 const saleFormFieldsSchema = saleSchema.omit({ items: true });
 type SaleFormFields = z.infer<typeof saleFormFieldsSchema>;
@@ -288,11 +288,11 @@ export default function NewSaleModal({ onClose, onSuccess }: NewSaleModalProps) 
               <div className="mt-3 flex items-center justify-between text-[11px] font-semibold">
                 <span className="text-slate-500">
                   Estoque Disponível:{" "}
-                  <strong className={isLow(activeSelectedProduct.stockLevel) ? "text-red-600" : "text-slate-800"}>
+                  <strong className={needsReplenish(activeSelectedProduct.status) ? "text-red-600" : "text-slate-800"}>
                     {activeSelectedProduct.stockLevel} unidades
                   </strong>
                 </span>
-                {isLow(activeSelectedProduct.stockLevel) && (
+                {needsReplenish(activeSelectedProduct.status) && (
                   <span className="text-red-600 flex items-center gap-1 animate-pulse">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     Estoque Baixo!

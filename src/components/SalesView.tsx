@@ -7,18 +7,21 @@ import { Sale, PaymentMethod, SaleStatus } from '../types';
 import { formatBRL } from '../lib/format';
 import { formatDateBR, formatTime, inPeriod } from '../lib/date';
 import { downloadCSV } from '../lib/csv';
+import { canWrite, type Role } from '../lib/auth/roles';
 import StatusBadge from './StatusBadge';
 
 interface SalesViewProps {
   sales: Sale[];
   searchQuery: string;
+  role: Role | null;
   onViewSaleDetails: (sale: Sale) => void;
   onRefundSale: (saleId: string) => void;
 }
 
 type DateFilter = 'all' | 'today' | '7days';
 
-export default function SalesView({ sales, searchQuery, onViewSaleDetails, onRefundSale }: SalesViewProps) {
+export default function SalesView({ sales, searchQuery, role, onViewSaleDetails, onRefundSale }: SalesViewProps) {
+  const showWrite = !!role && canWrite(role);
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [statusFilter, setStatusFilter] = useState<SaleStatus | 'all'>('all');
   const [pMethodFilter, setPMethodFilter] = useState<PaymentMethod | 'all'>('all');
@@ -264,7 +267,7 @@ export default function SalesView({ sales, searchQuery, onViewSaleDetails, onRef
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      {sale.status !== 'Cancelado' ? (
+                      {!showWrite ? null : sale.status !== 'Cancelado' ? (
                         <button
                           onClick={() => {
                             if (window.confirm(`Realizar o ESTORNO da venda ${sale.id}? Os itens retornarão ao estoque.`)) {

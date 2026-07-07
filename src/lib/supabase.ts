@@ -110,7 +110,14 @@ export const toMovementRow = (m: StockMovement): MovementRow => ({
 
 export const fromStoreSettingsRow = (
   r: StoreSettingsRow
-): { storeName: string; storeSegment: string } => ({
+): {
+  storeName: string;
+  storeSegment: string;
+  stockCritical: number;
+  stockLow: number;
+} => ({
   storeName: r.store_name,
   storeSegment: r.store_segment,
+  stockCritical: r.stock_critical,
+  stockLow: r.stock_low,
 });

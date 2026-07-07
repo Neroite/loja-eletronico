@@ -1,17 +1,20 @@
-import { useState, useMemo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import {
-  UserPlus, Search, ChevronRight, Mail, Phone, FileText,
-  ShoppingBag, Pencil, Trash2, UserRound, Wallet
+  UserPlus, Search, ChevronLeft, ChevronRight, Mail, Phone, FileText,
+  ShoppingBag, Pencil, Trash2, UserRound, Wallet, Download
 } from 'lucide-react';
 import { Client, Sale } from '../types';
 import { formatBRL } from '../lib/format';
 import { formatDateBR } from '../lib/date';
+import { downloadCSV } from '../lib/csv';
+import { canDelete, canWrite, type Role } from '../lib/auth/roles';
 import StatusBadge from './StatusBadge';
 
 interface ClientsViewProps {
   clients: Client[];
   sales: Sale[];
   searchQuery: string;
+  role: Role | null;
   onOpenNewClient: () => void;
   onEditClient: (client: Client) => void;
   onDeleteClient: (clientId: string) => void;
@@ -22,12 +25,17 @@ export default function ClientsView({
   clients,
   sales,
   searchQuery,
+  role,
   onOpenNewClient,
   onEditClient,
   onDeleteClient,
   onViewSaleDetails
 }: ClientsViewProps) {
+  const showWrite = !!role && canWrite(role);
+  const showDelete = !!role && canDelete(role);
   const [selectedId, setSelectedId] = useState<string | null>(clients[0]?.id ?? null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   const filteredClients = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -40,6 +48,46 @@ export default function ClientsView({
         (c.doc?.toLowerCase().includes(q) ?? false)
     );
   }, [clients, searchQuery]);
+
+  // Reset to page 1 whenever the result set changes (same fix as SalesView)
+  useEffect(() => setCurrentPage(1), [searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageClients = filteredClients.slice(
+    (safePage - 1) * itemsPerPage,
+    safePage * itemsPerPage
+  );
+
+  // Compras/total por cliente (vendas ativas, match estrito por clientId) para o CSV.
+  const handleExportCSV = () => {
+    const statsByClient = new Map<string, { purchases: number; total: number }>();
+    for (const sale of sales) {
+      if (!sale.clientId || sale.status === 'Cancelado') continue;
+      const prev = statsByClient.get(sale.clientId) ?? { purchases: 0, total: 0 };
+      prev.purchases += 1;
+      prev.total += sale.totalValue;
+      statsByClient.set(sale.clientId, prev);
+    }
+    downloadCSV(
+      'clientes.csv',
+      ['ID', 'Nome', 'Contato', 'Documento', 'E-mail', 'Telefone', 'Cliente desde', 'Compras', 'Total Gasto'],
+      filteredClients.map((c) => {
+        const stats = statsByClient.get(c.id) ?? { purchases: 0, total: 0 };
+        return [
+          c.id,
+          c.name,
+          c.contactName ?? '',
+          c.doc ?? '',
+          c.email ?? '',
+          c.phone ?? '',
+          formatDateBR(c.createdAt),
+          stats.purchases,
+          formatBRL(stats.total),
+        ];
+      })
+    );
+  };
 
   const selectedClient = clients.find((c) => c.id === selectedId) ?? null;
 
@@ -64,13 +112,24 @@ export default function ClientsView({
             {clients.length} clientes cadastrados. Selecione um cliente para ver o histórico de compras.
           </p>
         </div>
-        <button
-          onClick={onOpenNewClient}
-          className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-md shadow-brand/20 active:scale-95 transition-all"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Cadastrar Cliente</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Exportar CSV</span>
+          </button>
+          {showWrite && (
+            <button
+              onClick={onOpenNewClient}
+              className="bg-gradient-to-br from-brand to-brand-mid hover:from-brand-dark hover:to-brand text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-md shadow-brand/20 active:scale-95 transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Cadastrar Cliente</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -84,8 +143,8 @@ export default function ClientsView({
               </span>
             </div>
           </div>
-          <div className="overflow-y-auto custom-scrollbar divide-y divide-slate-100">
-            {filteredClients.map((client) => {
+          <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+            {pageClients.map((client) => {
               const initial = client.name.charAt(0).toUpperCase();
               const isActive = client.id === selectedId;
               return (
@@ -116,6 +175,31 @@ export default function ClientsView({
               </div>
             )}
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="px-3 py-2.5 border-t border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <p className="text-[10px] text-slate-400 font-medium">
+                Página {safePage} de {totalPages} · {filteredClients.length} cliente(s)
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="p-1.5 border border-slate-200 rounded-lg text-slate-400 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Detail */}
@@ -142,25 +226,29 @@ export default function ClientsView({
                   </div>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={() => onEditClient(selectedClient)}
-                    className="p-2 text-slate-400 hover:text-brand hover:bg-brand-tint rounded-lg transition-colors"
-                    title="Editar cliente"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`Remover o cliente ${selectedClient.name} da carteira?`)) {
-                        onDeleteClient(selectedClient.id);
-                        setSelectedId(null);
-                      }
-                    }}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Excluir cliente"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {showWrite && (
+                    <button
+                      onClick={() => onEditClient(selectedClient)}
+                      className="p-2 text-slate-400 hover:text-brand hover:bg-brand-tint rounded-lg transition-colors"
+                      title="Editar cliente"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
+                  {showDelete && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`Remover o cliente ${selectedClient.name} da carteira?`)) {
+                          onDeleteClient(selectedClient.id);
+                          setSelectedId(null);
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Excluir cliente"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
